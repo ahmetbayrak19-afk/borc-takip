@@ -9,9 +9,15 @@ let currentFilter = 'this-month';
 function formatMoney(amount) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }).format(amount || 0);
 }
+function toLocalDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
 function formatDateTR(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr + 'T12:00:00');
   const days = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
   const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + days[d.getDay()];
@@ -22,15 +28,15 @@ function monthNameTR(offset) {
   d.setMonth(d.getMonth() + offset);
   return months[d.getMonth()];
 }
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+function todayStr() { return toLocalDateStr(new Date()); }
 function addMonths(dateStr, months) {
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr + 'T12:00:00');
   d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateStr(d);
 }
 function isSameMonth(dateStr, ref) {
   if (!ref) ref = new Date();
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr + 'T12:00:00');
   return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
 }
 function isMonthOffset(dateStr, offset) {
@@ -266,7 +272,7 @@ function openDebtModal(editId) {
     title.textContent = 'Yeni Borç Ekle';
     const d = new Date();
     d.setDate(d.getDate() + 7);
-    document.getElementById('debt-due').value = d.toISOString().slice(0, 10);
+    document.getElementById('debt-due').value = toLocalDateStr(d);
   }
   modal.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
@@ -465,7 +471,7 @@ function clearAllData() {
 }
 
 function getMonthKey(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = new Date(dateStr + 'T12:00:00');
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 function monthTitleFromKey(key) {
