@@ -1,0 +1,21 @@
+{
+  "name": "borc-takip",
+  "version": "1.0.0",
+  "description": "Borç ve gelir takip uygulaması",
+  "main": "index.html",
+  "scripts": {
+    "build": "echo 'Static app - no build needed'",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android"
+  },
+  "keywords": ["borc", "takip", "debt", "tracker"],
+  "author": "ahmetbayrak19-afk",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}
