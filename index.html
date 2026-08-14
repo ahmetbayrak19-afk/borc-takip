@@ -131,8 +131,11 @@
         
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Borç Adı / Kurum</label>
-          <input type="text" id="debt-name" required placeholder="Örn: Axsess Troy, Kredi Kartı..." 
+          <input type="text" id="debt-name" list="debt-name-list" required placeholder="Örn: Axsess, Troy, Denizbank..." 
+                 autocomplete="off"
                  class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+          <datalist id="debt-name-list"></datalist>
+          <div id="recent-names" class="flex flex-wrap gap-2 mt-2.5"></div>
         </div>
 
         <div>
