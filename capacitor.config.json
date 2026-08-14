@@ -1,0 +1,16 @@
+{
+  "appId": "com.borctakip.app",
+  "appName": "Borç Takip",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  }
+}
