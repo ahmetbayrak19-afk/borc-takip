@@ -1,4 +1,4 @@
-// ==================== BORC TAKIP APP ====================
+// ==================== BORÇ TAKİP APP ====================
 const STORAGE_DEBTS = 'borc_takip_debts';
 const STORAGE_INCOMES = 'borc_takip_incomes';
 let debts = [];
@@ -12,12 +12,12 @@ function formatMoney(amount) {
 function formatDateTR(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + 'T00:00:00');
-  const days = ['Pazar','Pazartesi','Sali','Carsamba','Persembe','Cuma','Cumartesi'];
-  const months = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+  const days = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + days[d.getDay()];
 }
 function monthNameTR(offset) {
-  const months = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   const d = new Date();
   d.setMonth(d.getMonth() + offset);
   return months[d.getMonth()];
@@ -115,11 +115,11 @@ function renderBalance() {
   text.textContent = formatMoney(Math.abs(balance));
   if (balance >= 0) {
     banner.className = 'mt-4 rounded-2xl p-4 text-white fade-in bg-gradient-to-r from-emerald-500 to-green-600';
-    sub.textContent = 'Artidasiniz - Gelir: ' + formatMoney(income) + ' | Bu ay borc: ' + formatMoney(thisMonthDebt);
+    sub.textContent = 'Artıdasınız • Gelir: ' + formatMoney(income) + ' | Bu ay borç: ' + formatMoney(thisMonthDebt);
     icon.innerHTML = '<i class="fas fa-arrow-up"></i>';
   } else {
     banner.className = 'mt-4 rounded-2xl p-4 text-white fade-in bg-gradient-to-r from-rose-500 to-red-600';
-    sub.textContent = 'Eksidesiniz - Gelir: ' + formatMoney(income) + ' | Bu ay borc: ' + formatMoney(thisMonthDebt);
+    sub.textContent = 'Eksidesiniz • Gelir: ' + formatMoney(income) + ' | Bu ay borç: ' + formatMoney(thisMonthDebt);
     icon.innerHTML = '<i class="fas fa-arrow-down"></i>';
   }
 }
@@ -131,22 +131,20 @@ function renderSummaries() {
   document.getElementById('sum-this-month').textContent = formatMoney(s.thisMonth + s.today);
   const cards = document.querySelectorAll('#summary-grid > div');
   if (cards.length >= 6) {
-    cards[0].setAttribute('data-filter', 'overdue');
-    cards[0].style.cursor = 'pointer';
-    cards[1].setAttribute('data-filter', 'this-month');
-    cards[1].style.cursor = 'pointer';
-    cards[2].setAttribute('data-filter', 'this-month');
-    cards[2].style.cursor = 'pointer';
+    const filters = ['overdue', 'today', 'this-month', 'month-1', 'month-2', 'all'];
     cards[3].querySelector('p:first-child').textContent = monthNameTR(1);
     cards[3].querySelector('p:last-child').textContent = formatMoney(s.next1);
-    cards[3].setAttribute('data-filter', 'month-1');
-    cards[3].style.cursor = 'pointer';
     cards[4].querySelector('p:first-child').textContent = monthNameTR(2);
     cards[4].querySelector('p:last-child').textContent = formatMoney(s.next2 + s.later);
-    cards[4].setAttribute('data-filter', 'month-2');
-    cards[4].style.cursor = 'pointer';
-    cards[5].setAttribute('data-filter', 'all');
-    cards[5].style.cursor = 'pointer';
+    for (let i = 0; i < 6; i++) {
+      cards[i].setAttribute('data-filter', filters[i]);
+      cards[i].style.cursor = 'pointer';
+      if (filters[i] === currentFilter) {
+        cards[i].className = 'bg-blue-50 rounded-xl p-3 card-shadow text-center border-2 border-blue-500';
+      } else {
+        cards[i].className = 'bg-white rounded-xl p-3 card-shadow text-center';
+      }
+    }
   }
   document.getElementById('sum-total').textContent = formatMoney(s.total);
 }
@@ -160,7 +158,7 @@ function renderIncomes() {
   incomes.forEach(function(inc) {
     const el = document.createElement('div');
     el.className = 'bg-white rounded-xl p-3.5 card-shadow flex items-center justify-between fade-in';
-    el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">Aylik</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
+    el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">Aylık</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
     list.appendChild(el);
   });
 }
@@ -171,7 +169,8 @@ function renderDebts() {
   const empty = document.getElementById('debt-empty');
   list.innerHTML = '';
   let items = getActiveInstallments();
-  if (filter === 'this-month') items = items.filter(function(i) { return isSameMonth(i.dueDate); });
+  if (filter === 'today') items = items.filter(function(i) { return isToday(i.dueDate); });
+  else if (filter === 'this-month') items = items.filter(function(i) { return isSameMonth(i.dueDate); });
   else if (filter === 'overdue') items = items.filter(function(i) { return isOverdue(i.dueDate); });
   else if (filter === 'upcoming') items = items.filter(function(i) { return !isOverdue(i.dueDate); });
   else if (filter.indexOf('month-') === 0) {
@@ -186,15 +185,16 @@ function renderDebts() {
     const isTod = isToday(item.dueDate);
     const el = document.createElement('div');
     el.className = 'bg-white rounded-xl p-4 card-shadow fade-in';
-    el.innerHTML = '<div class="flex justify-between items-start"><div class="flex-1 min-w-0"><p class="text-xs text-gray-500 mb-0.5">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900 truncate">' + escapeHtml(item.name) + '</p><p class="text-xs font-medium text-blue-600 mt-1">(' + item.installmentLabel + ')</p></div><div class="text-right ml-3"><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount) + '</p>' + (isLate ? '<span class="text-xs text-red-500 font-medium">Gecikmis</span>' : isTod ? '<span class="text-xs text-orange-500 font-medium">Bugun</span>' : '') + '</div></div><div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100"><button onclick="confirmMarkPaid(\'' + item.debtId + '\')" class="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-check-circle"></i> Odendi</button><button onclick="editDebt(\'' + item.debtId + '\')" class="text-blue-600 hover:text-blue-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-pen"></i> Duzenle</button><button onclick="deleteDebt(\'' + item.debtId + '\')" class="text-red-500 hover:text-red-600 flex items-center gap-1.5 text-sm font-medium ml-auto"><i class="fas fa-times"></i></button></div>';
+    el.innerHTML = '<div class="flex justify-between items-start"><div class="flex-1 min-w-0"><p class="text-xs text-gray-500 mb-0.5">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900 truncate">' + escapeHtml(item.name) + '</p><p class="text-xs font-medium text-blue-600 mt-1">(' + item.installmentLabel + ')</p></div><div class="text-right ml-3"><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount) + '</p>' + (isLate ? '<span class="text-xs text-red-500 font-medium">Gecikmiş</span>' : isTod ? '<span class="text-xs text-orange-500 font-medium">Bugün</span>' : '') + '</div></div><div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100"><button onclick="confirmMarkPaid(\'' + item.debtId + '\')" class="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-check-circle"></i> Ödendi</button><button onclick="editDebt(\'' + item.debtId + '\')" class="text-blue-600 hover:text-blue-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-pen"></i> Düzenle</button><button onclick="deleteDebt(\'' + item.debtId + '\')" class="text-red-500 hover:text-red-600 flex items-center gap-1.5 text-sm font-medium ml-auto"><i class="fas fa-times"></i></button></div>';
     list.appendChild(el);
   });
 }
 
 function filterLabel(f) {
+  if (f === 'today') return 'Bugün';
   if (f === 'this-month') return 'Bu Ay';
-  if (f === 'overdue') return 'Gecikmis';
-  if (f === 'all') return 'Tumu';
+  if (f === 'overdue') return 'Gecikmiş';
+  if (f === 'all') return 'Tümü';
   if (f && f.indexOf('month-') === 0) return monthNameTR(parseInt(f.split('-')[1], 10));
   return 'Bu Ay';
 }
@@ -250,7 +250,7 @@ function openDebtModal(editId) {
   if (editId) {
     const debt = debts.find(function(d) { return d.id === editId; });
     if (!debt) return;
-    title.textContent = 'Borcu Duzenle';
+    title.textContent = 'Borcu Düzenle';
     document.getElementById('debt-id').value = debt.id;
     document.getElementById('debt-name').value = debt.name;
     document.getElementById('debt-total').value = debt.installmentAmount || debt.totalAmount;
@@ -263,7 +263,7 @@ function openDebtModal(editId) {
       updateInstallmentPreview();
     }
   } else {
-    title.textContent = 'Yeni Borc Ekle';
+    title.textContent = 'Yeni Borç Ekle';
     const d = new Date();
     d.setDate(d.getDate() + 7);
     document.getElementById('debt-due').value = d.toISOString().slice(0, 10);
@@ -283,7 +283,7 @@ function updateInstallmentPreview() {
   const info = document.getElementById('installment-info');
   if (count > 1 && amount > 0) {
     const total = Math.round(amount * count * 100) / 100;
-    info.textContent = count + ' taksit x ' + formatMoney(amount) + ' = ' + formatMoney(total) + ' toplam';
+    info.textContent = count + ' taksit × ' + formatMoney(amount) + ' = ' + formatMoney(total) + ' toplam';
     preview.classList.remove('hidden');
   } else preview.classList.add('hidden');
 }
@@ -299,7 +299,7 @@ function saveDebt(e) {
     installmentCount = parseInt(document.getElementById('debt-installments').value) || 1;
     if (installmentCount < 1) installmentCount = 1;
   }
-  if (!name || !installmentAmount || !startDate) { showToast('Lutfen zorunlu alanlari doldurun'); return; }
+  if (!name || !installmentAmount || !startDate) { showToast('Lütfen zorunlu alanları doldurun'); return; }
   const totalAmount = Math.round(installmentAmount * installmentCount * 100) / 100;
   const existingIdx = debts.findIndex(function(d) { return d.id === id; });
   let paidInstallments = 0;
@@ -315,27 +315,27 @@ function saveDebt(e) {
     paidInstallments: paidInstallments,
     createdAt: existingIdx >= 0 ? debts[existingIdx].createdAt : new Date().toISOString()
   };
-  if (existingIdx >= 0) { debts[existingIdx] = debtObj; showToast('Borc guncellendi'); }
-  else { debts.push(debtObj); showToast('Borc eklendi'); }
+  if (existingIdx >= 0) { debts[existingIdx] = debtObj; showToast('Borç güncellendi'); }
+  else { debts.push(debtObj); showToast('Borç eklendi'); }
   saveDebts(); closeDebtModal(); renderAll();
 }
 function confirmMarkPaid(debtId) {
-  if (!confirm('Bu taksiti odendi olarak isaretlemek istiyor musunuz?')) return;
+  if (!confirm('Bu taksiti ödendi olarak işaretlemek istiyor musunuz?')) return;
   markPaid(debtId);
 }
 function markPaid(debtId) {
   const debt = debts.find(function(d) { return d.id === debtId; });
   if (!debt) return;
   debt.paidInstallments = (debt.paidInstallments || 0) + 1;
-  if (debt.paidInstallments >= debt.installmentCount) showToast('Borc tamamen odendi');
-  else showToast('Taksit odendi (' + debt.paidInstallments + '/' + debt.installmentCount + ')');
+  if (debt.paidInstallments >= debt.installmentCount) showToast('Borç tamamen ödendi');
+  else showToast('Taksit ödendi (' + debt.paidInstallments + '/' + debt.installmentCount + ')');
   saveDebts(); renderAll();
 }
 function editDebt(debtId) { openDebtModal(debtId); }
 function deleteDebt(debtId) {
-  if (!confirm('Bu borcu silmek istediginize emin misiniz?')) return;
+  if (!confirm('Bu borcu silmek istediğinize emin misiniz?')) return;
   debts = debts.filter(function(d) { return d.id !== debtId; });
-  saveDebts(); showToast('Borc silindi'); renderAll();
+  saveDebts(); showToast('Borç silindi'); renderAll();
 }
 
 function openIncomeModal() {
@@ -367,32 +367,67 @@ function closeSettings() { document.getElementById('modal-settings').classList.a
 function exportData() {
   const data = { debts: debts, incomes: incomes, exportedAt: new Date().toISOString() };
   const json = JSON.stringify(data, null, 2);
+  const filename = 'borc-takip-' + todayStr() + '.json';
+  closeSettings();
+  showExportModal(json, filename);
   if (navigator.share) {
     try {
       const blob = new Blob([json], { type: 'application/json' });
-      const file = new File([blob], 'borc-takip-' + todayStr() + '.json', { type: 'application/json' });
-      navigator.share({ title: 'Borc Takip Yedek', files: [file] }).then(function() {
-        showToast('Paylasim acildi'); closeSettings();
-      }).catch(function() { fallbackExport(json); });
-      return;
-    } catch (e) { fallbackExport(json); return; }
+      const file = new File([blob], filename, { type: 'application/json' });
+      navigator.share({ title: 'Borç Takip Yedek', text: 'Borç takip yedek dosyası', files: [file] }).catch(function() {});
+    } catch (e) {}
   }
-  fallbackExport(json);
 }
-function fallbackExport(json) {
+function showExportModal(json, filename) {
+  let modal = document.getElementById('modal-export');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-export';
+    modal.className = 'fixed inset-0 z-[60]';
+    modal.innerHTML = '<div class="absolute inset-0 bg-black/40" onclick="closeExportModal()"></div>' +
+      '<div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-5 slide-up max-h-[80vh] overflow-y-auto">' +
+      '<h2 class="font-bold text-lg mb-2">Veriler Hazır</h2>' +
+      '<p class="text-sm text-gray-500 mb-3">Dosya adı: <span id="export-filename" class="font-medium text-gray-800"></span></p>' +
+      '<textarea id="export-json" readonly class="w-full h-40 border border-gray-200 rounded-xl p-3 text-xs font-mono bg-gray-50 mb-3"></textarea>' +
+      '<button onclick="copyExportJson()" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl mb-2">Panoya Kopyala</button>' +
+      '<button onclick="downloadExportJson()" class="w-full bg-gray-100 text-gray-800 font-semibold py-3 rounded-xl mb-2">İndirmeyi Dene</button>' +
+      '<button onclick="closeExportModal()" class="w-full text-gray-500 py-2">Kapat</button></div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('export-filename').textContent = filename;
+  document.getElementById('export-json').value = json;
+  window._exportJson = json;
+  window._exportFilename = filename;
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function closeExportModal() {
+  const modal = document.getElementById('modal-export');
+  if (modal) modal.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+function copyExportJson() {
+  const json = window._exportJson || '';
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(json).then(function() { showToast('Panoya kopyalandı'); }).catch(function() {
+      const ta = document.getElementById('export-json'); ta.select(); document.execCommand('copy'); showToast('Panoya kopyalandı');
+    });
+  } else {
+    const ta = document.getElementById('export-json'); ta.select(); document.execCommand('copy'); showToast('Panoya kopyalandı');
+  }
+}
+function downloadExportJson() {
+  const json = window._exportJson || '';
+  const filename = window._exportFilename || 'borc-takip.json';
   try {
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'borc-takip-' + todayStr() + '.json'; a.style.display = 'none';
+    a.href = url; a.download = filename; a.style.display = 'none';
     document.body.appendChild(a); a.click();
-    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-    showToast('Dosya indirildi');
-  } catch (e) {
-    if (navigator.clipboard) navigator.clipboard.writeText(json).then(function() { showToast('JSON panoya kopyalandi'); });
-    else showToast('Disa aktarma desteklenmiyor');
-  }
-  closeSettings();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    showToast('İndirme denendi: ' + filename);
+  } catch (e) { showToast('İndirme desteklenmiyor, panoya kopyalayın'); }
 }
 function importData(e) {
   const file = e.target.files[0]; if (!file) return;
@@ -403,15 +438,15 @@ function importData(e) {
       if (data.debts) debts = data.debts;
       if (data.incomes) incomes = data.incomes;
       saveDebts(); saveIncomes(); renderAll();
-      showToast('Veriler yuklendi'); closeSettings();
-    } catch (err) { showToast('Gecersiz dosya'); }
+      showToast('Veriler yüklendi'); closeSettings();
+    } catch (err) { showToast('Geçersiz dosya'); }
   };
   reader.readAsText(file);
 }
 function clearAllData() {
-  if (!confirm('TUM borc ve gelir verileri silinecek. Emin misiniz?')) return;
+  if (!confirm('TÜM borç ve gelir verileri silinecek. Emin misiniz?')) return;
   debts = []; incomes = []; saveDebts(); saveIncomes(); renderAll();
-  showToast('Tum veriler silindi'); closeSettings();
+  showToast('Tüm veriler silindi'); closeSettings();
 }
 
 function getMonthKey(dateStr) {
@@ -420,7 +455,7 @@ function getMonthKey(dateStr) {
 }
 function monthTitleFromKey(key) {
   const parts = key.split('-');
-  const months = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   return months[parseInt(parts[1], 10) - 1] + ' ' + parts[0];
 }
 function openMonthsModal() {
@@ -437,14 +472,14 @@ function openMonthsModal() {
   const list = document.getElementById('months-list');
   list.innerHTML = '';
   if (keys.length === 0) {
-    list.innerHTML = '<p class="text-center text-gray-400 py-8">Henuz borc yok.</p>';
+    list.innerHTML = '<p class="text-center text-gray-400 py-8">Henüz borç yok.</p>';
   } else {
     keys.forEach(function(key) {
       const m = byMonth[key];
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'w-full flex items-center justify-between px-4 py-3.5 rounded-xl bg-gray-50 hover:bg-blue-50 border border-gray-100 text-left';
-      btn.innerHTML = '<div><p class="font-semibold text-gray-900">' + monthTitleFromKey(key) + '</p><p class="text-xs text-gray-500">' + m.count + ' borc</p></div><span class="font-bold text-gray-800">' + formatMoney(m.total) + '</span>';
+      btn.innerHTML = '<div><p class="font-semibold text-gray-900">' + monthTitleFromKey(key) + '</p><p class="text-xs text-gray-500">' + m.count + ' borç</p></div><span class="font-bold text-gray-800">' + formatMoney(m.total) + '</span>';
       btn.onclick = function() { openMonthDebtsModal(key); };
       list.appendChild(btn);
     });
@@ -493,6 +528,7 @@ function isModalOpen(id) {
   return el && !el.classList.contains('hidden');
 }
 function handleBackButton() {
+  if (isModalOpen('modal-export')) { closeExportModal(); return; }
   if (isModalOpen('modal-month-debts')) { closeMonthDebtsModal(); return; }
   if (isModalOpen('modal-months')) { closeMonthsModal(); return; }
   if (isModalOpen('modal-name-picker')) { closeNamePicker(); return; }
@@ -533,7 +569,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const card = e.target.closest('[data-filter]');
       if (!card) return;
       const f = card.getAttribute('data-filter');
-      if (f) { currentFilter = f; renderFilterOptions(); renderDebts(); }
+      if (f) { currentFilter = f; renderFilterOptions(); renderSummaries(); renderDebts(); }
     });
   }
   const pickBtn = document.getElementById('btn-pick-name');
