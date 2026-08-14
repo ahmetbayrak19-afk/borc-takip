@@ -300,6 +300,52 @@ function renderAll() {
   renderDebts();
 }
 
+function populateRecentNames() {
+  const datalist = document.getElementById('debt-name-list');
+  const container = document.getElementById('recent-names');
+  if (!datalist || !container) return;
+
+  // Unique names, most recent first
+  const seen = new Set();
+  const names = [];
+  for (let i = debts.length - 1; i >= 0; i--) {
+    const name = (debts[i].name || '').trim();
+    if (name && !seen.has(name.toLowerCase())) {
+      seen.add(name.toLowerCase());
+      names.push(name);
+    }
+  }
+
+  // Fill datalist
+  datalist.innerHTML = '';
+  names.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n;
+    datalist.appendChild(opt);
+  });
+
+  // Fill quick-select chips (max 8)
+  container.innerHTML = '';
+  if (names.length === 0) return;
+
+  const label = document.createElement('span');
+  label.className = 'text-xs text-gray-400 w-full mb-0.5';
+  label.textContent = 'Son kullanılanlar:';
+  container.appendChild(label);
+
+  names.slice(0, 8).forEach(n => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-3 py-1.5 hover:bg-blue-100 transition';
+    chip.textContent = n;
+    chip.onclick = () => {
+      document.getElementById('debt-name').value = n;
+      document.getElementById('debt-name').focus();
+    };
+    container.appendChild(chip);
+  });
+}
+
 // ==================== DEBT ACTIONS ====================
 function openDebtModal(editId = null) {
   editingDebtId = editId;
@@ -311,6 +357,7 @@ function openDebtModal(editId = null) {
   document.getElementById('debt-id').value = '';
   document.getElementById('debt-installments').value = 1;
   document.getElementById('installment-preview').classList.add('hidden');
+  populateRecentNames();
 
   if (editId) {
     const debt = debts.find(d => d.id === editId);
@@ -533,7 +580,6 @@ function isModalOpen(id) {
 }
 
 function handleBackButton() {
-  // Modal açıksa önce onu kapat
   if (isModalOpen('modal-debt')) {
     closeDebtModal();
     return;
@@ -547,20 +593,17 @@ function handleBackButton() {
     return;
   }
 
-  // Hiçbir modal açık değilse uygulamadan çık
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
     window.Capacitor.Plugins.App.exitApp();
   }
 }
 
 function setupBackButton() {
-  // Capacitor ortamında mı kontrol et
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
     const App = window.Capacitor.Plugins.App;
     App.addListener('backButton', () => {
       handleBackButton();
     });
-    console.log('Android geri tuşu dinleyicisi eklendi');
   }
 }
 
