@@ -78,6 +78,15 @@ function showToast(msg) {
   }, 2200);
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"');
+}
+
 // ==================== STORAGE ====================
 function loadData() {
   try {
@@ -282,15 +291,6 @@ function renderDebts() {
     `;
     list.appendChild(el);
   });
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"');
 }
 
 function renderAll() {
@@ -526,10 +526,49 @@ function clearAllData() {
   closeSettings();
 }
 
+// ==================== ANDROID BACK BUTTON ====================
+function isModalOpen(id) {
+  const el = document.getElementById(id);
+  return el && !el.classList.contains('hidden');
+}
+
+function handleBackButton() {
+  // Modal açıksa önce onu kapat
+  if (isModalOpen('modal-debt')) {
+    closeDebtModal();
+    return;
+  }
+  if (isModalOpen('modal-income')) {
+    closeIncomeModal();
+    return;
+  }
+  if (isModalOpen('modal-settings')) {
+    closeSettings();
+    return;
+  }
+
+  // Hiçbir modal açık değilse uygulamadan çık
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+    window.Capacitor.Plugins.App.exitApp();
+  }
+}
+
+function setupBackButton() {
+  // Capacitor ortamında mı kontrol et
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+    const App = window.Capacitor.Plugins.App;
+    App.addListener('backButton', () => {
+      handleBackButton();
+    });
+    console.log('Android geri tuşu dinleyicisi eklendi');
+  }
+}
+
 // ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', () => {
   loadData();
   renderAll();
+  setupBackButton();
 
   document.getElementById('btn-add-debt').addEventListener('click', () => openDebtModal());
   document.getElementById('btn-add-income').addEventListener('click', openIncomeModal);
