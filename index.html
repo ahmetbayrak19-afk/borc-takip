@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Borç Takip</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06); }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
+    input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
+    .fade-in { animation: fadeIn 0.25s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .slide-up { animation: slideUp 0.3s ease-out; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800">
+  <!-- Header -->
+  <header class="bg-white sticky top-0 z-40 border-b border-gray-200">
+    <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 id="page-title" class="text-xl font-bold text-gray-900">Genel Bakış</h1>
+      <button id="btn-settings" class="text-blue-600 font-medium text-sm px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 transition">
+        Ayarlar
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-lg mx-auto px-4 pb-28 safe-bottom">
+    <!-- BALANCE BANNER -->
+    <div id="balance-banner" class="mt-4 rounded-2xl p-4 text-white fade-in hidden">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm opacity-90">Aylık Durum</p>
+          <p id="balance-text" class="text-2xl font-bold mt-0.5">₺0,00</p>
+          <p id="balance-sub" class="text-xs opacity-80 mt-1"></p>
+        </div>
+        <div id="balance-icon" class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl">
+          <i class="fas fa-balance-scale"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEBT SUMMARY CARDS -->
+    <section class="mt-5">
+      <h2 class="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Borç Özetiniz</h2>
+      <div class="grid grid-cols-3 gap-2.5">
+        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p class="text-xs text-gray-500 mb-1">Gecikmiş</p>
+          <p id="sum-overdue" class="text-sm font-bold text-red-600">₺0,00</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p class="text-xs text-gray-500 mb-1">Bugün</p>
+          <p id="sum-today" class="text-sm font-bold text-orange-600">₺0,00</p>
+        </div>
+        <div class="bg-blue-50 rounded-xl p-3 card-shadow text-center border-2 border-blue-200">
+          <p class="text-xs text-blue-600 mb-1 font-medium">Bu ay</p>
+          <p id="sum-this-month" class="text-sm font-bold text-blue-700">₺0,00</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p class="text-xs text-gray-500 mb-1">Gelecek Ay</p>
+          <p id="sum-next-month" class="text-sm font-bold text-gray-800">₺0,00</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p class="text-xs text-gray-500 mb-1">Sonraki Aylar</p>
+          <p id="sum-later" class="text-sm font-bold text-gray-800">₺0,00</p>
+        </div>
+        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p class="text-xs text-gray-500 mb-1">Genel</p>
+          <p id="sum-total" class="text-sm font-bold text-gray-900">₺0,00</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- INCOME SECTION -->
+    <section class="mt-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Gelirlerim</h2>
+        <button id="btn-add-income" class="text-blue-600 text-sm font-medium flex items-center gap-1">
+          <i class="fas fa-plus text-xs"></i> Ekle
+        </button>
+      </div>
+      <div id="income-list" class="space-y-2"></div>
+      <div id="income-empty" class="bg-white rounded-xl p-4 card-shadow text-center text-gray-400 text-sm hidden">
+        Henüz gelir eklenmedi. Maaş veya diğer gelirlerinizi ekleyin.
+      </div>
+    </section>
+
+    <!-- DEBTS LIST -->
+    <section class="mt-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Borç Bilgileriniz</h2>
+        <select id="debt-filter" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white">
+          <option value="this-month">Bu Ay</option>
+          <option value="overdue">Gecikmiş</option>
+          <option value="upcoming">Yaklaşan</option>
+          <option value="all">Tümü</option>
+        </select>
+      </div>
+      <div id="debt-list" class="space-y-3"></div>
+      <div id="debt-empty" class="bg-white rounded-xl p-6 card-shadow text-center text-gray-400 text-sm hidden">
+        <i class="fas fa-check-circle text-3xl text-green-400 mb-2"></i>
+        <p>Bu dönemde borç bulunmuyor.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Floating Add Button -->
+  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 safe-bottom z-30">
+    <div class="max-w-lg mx-auto">
+      <button id="btn-add-debt" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+        <i class="fas fa-plus"></i> Yeni Borç Ekle
+      </button>
+    </div>
+  </div>
+
+  <!-- ADD / EDIT DEBT MODAL -->
+  <div id="modal-debt" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/40" onclick="closeDebtModal()"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[92vh] overflow-y-auto slide-up">
+      <div class="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between rounded-t-3xl">
+        <button onclick="closeDebtModal()" class="text-gray-500 text-lg"><i class="fas fa-arrow-left"></i></button>
+        <h2 id="debt-modal-title" class="font-bold text-lg">Yeni Borç Ekle</h2>
+        <div class="w-6"></div>
+      </div>
+      <form id="form-debt" class="p-5 space-y-4">
+        <input type="hidden" id="debt-id" />
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1.5">Borç Adı / Kurum</label>
+          <input type="text" id="debt-name" required placeholder="Örn: Axsess Troy, Kredi Kartı..." 
+                 class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1.5">Kategori</label>
+          <div class="flex gap-2">
+            <select id="debt-category" class="flex-1 border border-gray-200 rounded-xl px-4 py-3 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="Kredi Kartı">Kredi Kartı</option>
+              <option value="Banka Kredisi">Banka Kredisi</option>
+              <option value="Kişisel">Kişisel</option>
+              <option value="Fatura">Fatura</option>
+              <option value="Diğer">Diğer</option>
+            </select>
+            <button type="button" id="btn-custom-cat" class="px-3 border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50">
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1.5">Toplam Borç (₺)</label>
+            <input type="number" id="debt-total" required min="1" step="0.01" placeholder="0,00"
+                   class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1.5">Taksit Sayısı</label>
+            <input type="number" id="debt-installments" required min="1" max="120" value="1"
+                   class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+        </div>
+
+        <div id="installment-preview" class="bg-blue-50 rounded-xl p-3 text-sm text-blue-800 hidden">
+          <span id="installment-info"></span>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1.5">İlk / Sonraki Ödeme Tarihi</label>
+          <input type="date" id="debt-due" required
+                 class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1.5">Not (isteğe bağlı)</label>
+          <input type="text" id="debt-note" placeholder="Borç açıklaması..."
+                 class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+
+        <div class="flex items-center gap-3 py-1">
+          <input type="checkbox" id="debt-recurring" class="w-5 h-5 rounded text-blue-600" />
+          <label for="debt-recurring" class="text-sm text-gray-700">Her ay tekrar eden borç (sabit taksit)</label>
+        </div>
+
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl transition mt-2">
+          Kaydet
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD INCOME MODAL -->
+  <div id="modal-income" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/40" onclick="closeIncomeModal()"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl slide-up">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <button onclick="closeIncomeModal()" class="text-gray-500"><i class="fas fa-arrow-left"></i></button>
+        <h2 class="font-bold text-lg">Gelir Ekle</h2>
+        <div class="w-6"></div>
+      </div>
+      <form id="form-income" class="p-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1.5">Gelir Adı</label>
+          <input type="text" id="income-name" required placeholder="Örn: Maaş, Freelance..."
+                 class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1.5">Aylık Tutar (₺)</label>
+          <input type="number" id="income-amount" required min="1" step="0.01" placeholder="0,00"
+                 class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl">
+          Kaydet
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="modal-settings" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/40" onclick="closeSettings()"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-5 slide-up">
+      <h2 class="font-bold text-lg mb-4">Ayarlar</h2>
+      <div class="space-y-3">
+        <button onclick="exportData()" class="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-left">
+          <i class="fas fa-download text-blue-600"></i>
+          <span>Verileri Dışa Aktar (JSON)</span>
+        </button>
+        <label class="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer">
+          <i class="fas fa-upload text-blue-600"></i>
+          <span>Verileri İçe Aktar</span>
+          <input type="file" id="import-file" accept=".json" class="hidden" onchange="importData(event)" />
+        </label>
+        <button onclick="clearAllData()" class="w-full flex items-center gap-3 p-3 rounded-xl bg-red-50 hover:bg-red-100 text-left text-red-600">
+          <i class="fas fa-trash"></i>
+          <span>Tüm Verileri Sil</span>
+        </button>
+      </div>
+      <button onclick="closeSettings()" class="w-full mt-5 py-3 text-gray-600 font-medium">Kapat</button>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-2.5 rounded-full text-sm font-medium shadow-lg z-[60] opacity-0 pointer-events-none transition-opacity duration-300"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
