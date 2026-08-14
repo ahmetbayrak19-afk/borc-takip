@@ -46,7 +46,7 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.remove('opacity-0');
   t.classList.add('opacity-100');
-  setTimeout(function() { t.classList.remove('opacity-100'); t.classList.add('opacity-0'); }, 2500);
+  setTimeout(function() { t.classList.remove('opacity-100'); t.classList.add('opacity-0'); }, 2800);
 }
 function escapeHtml(str) {
   if (!str) return '';
@@ -369,66 +369,81 @@ function exportData() {
   const json = JSON.stringify(data, null, 2);
   const filename = 'borc-takip-' + todayStr() + '.json';
   closeSettings();
-  showExportModal(json, filename);
-  if (navigator.share) {
+  saveBackupFile(json, filename);
+}
+
+async function saveBackupFile(json, filename) {
+  if (window.Capacitor && window.Capacitor.Plugins) {
+    const FS = window.Capacitor.Plugins.Filesystem;
+    const SharePlugin = window.Capacitor.Plugins.Share;
     try {
-      const blob = new Blob([json], { type: 'application/json' });
-      const file = new File([blob], filename, { type: 'application/json' });
-      navigator.share({ title: 'Borç Takip Yedek', text: 'Borç takip yedek dosyası', files: [file] }).catch(function() {});
-    } catch (e) {}
+      if (FS && FS.writeFile) {
+        await FS.writeFile({
+          path: filename,
+          data: json,
+          directory: 'DOCUMENTS',
+          encoding: 'utf8',
+          recursive: true
+        });
+        let uri = null;
+        try {
+          const uriResult = await FS.getUri({ path: filename, directory: 'DOCUMENTS' });
+          uri = uriResult && (uriResult.uri || uriResult);
+        } catch (e1) {}
+        if (SharePlugin && SharePlugin.share) {
+          try {
+            const shareOpts = { title: 'Borç Takip Yedek', dialogTitle: 'Yedeği kaydet veya paylaş' };
+            if (uri) shareOpts.url = uri;
+            else shareOpts.text = json;
+            await SharePlugin.share(shareOpts);
+            showToast('Kaydedildi: ' + filename);
+            return;
+          } catch (e2) {
+            showToast('Belgeler klasörüne kaydedildi: ' + filename);
+            return;
+          }
+        }
+        showToast('Belgeler klasörüne kaydedildi: ' + filename);
+        return;
+      }
+    } catch (err) {
+      console.error('Filesystem kaydetme hatası', err);
+      showToast('Kayıt hatası, panoya kopyalanıyor...');
+      copyTextFallback(json);
+      return;
+    }
   }
-}
-function showExportModal(json, filename) {
-  let modal = document.getElementById('modal-export');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'modal-export';
-    modal.className = 'fixed inset-0 z-[60]';
-    modal.innerHTML = '<div class="absolute inset-0 bg-black/40" onclick="closeExportModal()"></div>' +
-      '<div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-5 slide-up max-h-[80vh] overflow-y-auto">' +
-      '<h2 class="font-bold text-lg mb-2">Veriler Hazır</h2>' +
-      '<p class="text-sm text-gray-500 mb-3">Dosya adı: <span id="export-filename" class="font-medium text-gray-800"></span></p>' +
-      '<textarea id="export-json" readonly class="w-full h-40 border border-gray-200 rounded-xl p-3 text-xs font-mono bg-gray-50 mb-3"></textarea>' +
-      '<button onclick="copyExportJson()" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl mb-2">Panoya Kopyala</button>' +
-      '<button onclick="downloadExportJson()" class="w-full bg-gray-100 text-gray-800 font-semibold py-3 rounded-xl mb-2">İndirmeyi Dene</button>' +
-      '<button onclick="closeExportModal()" class="w-full text-gray-500 py-2">Kapat</button></div>';
-    document.body.appendChild(modal);
-  }
-  document.getElementById('export-filename').textContent = filename;
-  document.getElementById('export-json').value = json;
-  window._exportJson = json;
-  window._exportFilename = filename;
-  modal.classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
-}
-function closeExportModal() {
-  const modal = document.getElementById('modal-export');
-  if (modal) modal.classList.add('hidden');
-  document.body.style.overflow = '';
-}
-function copyExportJson() {
-  const json = window._exportJson || '';
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(json).then(function() { showToast('Panoya kopyalandı'); }).catch(function() {
-      const ta = document.getElementById('export-json'); ta.select(); document.execCommand('copy'); showToast('Panoya kopyalandı');
-    });
-  } else {
-    const ta = document.getElementById('export-json'); ta.select(); document.execCommand('copy'); showToast('Panoya kopyalandı');
-  }
-}
-function downloadExportJson() {
-  const json = window._exportJson || '';
-  const filename = window._exportFilename || 'borc-takip.json';
   try {
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = filename; a.style.display = 'none';
-    document.body.appendChild(a); a.click();
-    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-    showToast('İndirme denendi: ' + filename);
-  } catch (e) { showToast('İndirme desteklenmiyor, panoya kopyalayın'); }
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 800);
+    showToast('İndirildi: ' + filename);
+  } catch (e) {
+    copyTextFallback(json);
+  }
 }
+
+function copyTextFallback(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showToast('JSON panoya kopyalandı');
+    }).catch(function() {
+      showToast('Dışa aktarma başarısız');
+    });
+  } else {
+    showToast('Dışa aktarma desteklenmiyor');
+  }
+}
+
 function importData(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -528,7 +543,6 @@ function isModalOpen(id) {
   return el && !el.classList.contains('hidden');
 }
 function handleBackButton() {
-  if (isModalOpen('modal-export')) { closeExportModal(); return; }
   if (isModalOpen('modal-month-debts')) { closeMonthDebtsModal(); return; }
   if (isModalOpen('modal-months')) { closeMonthsModal(); return; }
   if (isModalOpen('modal-name-picker')) { closeNamePicker(); return; }
