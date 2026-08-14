@@ -62,26 +62,33 @@ function loadData() {
 function saveDebts() { localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts)); }
 function saveIncomes() { localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes)); }
 
+// Tüm kalan taksitleri üret (sadece sıradaki değil — her ay kendi taksitini görür)
 function getActiveInstallments() {
-  var result = [];
+  const result = [];
   debts.forEach(function(debt) {
-    var paidCount = debt.paidInstallments || 0;
-    if (paidCount >= debt.installmentCount) return;
-    var currentIdx = paidCount;
-    var dueDate = addMonths(debt.startDate, currentIdx);
-    result.push({
-      debtId: debt.id, name: debt.name, amount: debt.installmentAmount, dueDate: dueDate,
-      installmentLabel: (currentIdx + 1) + '/' + debt.installmentCount,
-      isRecurring: debt.recurring, totalAmount: debt.totalAmount,
-      remaining: debt.installmentCount - paidCount
-    });
+    const paidCount = debt.paidInstallments || 0;
+    const count = debt.installmentCount || 1;
+    const amount = debt.installmentAmount || debt.totalAmount || 0;
+    for (let i = paidCount; i < count; i++) {
+      result.push({
+        debtId: debt.id,
+        name: debt.name,
+        amount: amount,
+        dueDate: addMonths(debt.startDate, i),
+        installmentLabel: (i + 1) + '/' + count,
+        installmentIndex: i,
+        isRecurring: !!debt.recurring,
+        totalAmount: debt.totalAmount || (amount * count),
+        remaining: count - paidCount
+      });
+    }
   });
   return result;
 }
 
 function calcSummaries() {
-  var items = getActiveInstallments();
-  var overdue = 0, today = 0, thisMonth = 0, next1 = 0, next2 = 0, later = 0, total = 0;
+  const items = getActiveInstallments();
+  let overdue = 0, today = 0, thisMonth = 0, next1 = 0, next2 = 0, later = 0, total = 0;
   items.forEach(function(item) {
     total += item.amount;
     if (isOverdue(item.dueDate)) overdue += item.amount;
@@ -102,13 +109,13 @@ function getThisMonthDebtTotal() {
 }
 
 function renderBalance() {
-  var income = getMonthlyIncome();
-  var thisMonthDebt = getThisMonthDebtTotal();
-  var balance = income - thisMonthDebt;
-  var banner = document.getElementById('balance-banner');
-  var text = document.getElementById('balance-text');
-  var sub = document.getElementById('balance-sub');
-  var icon = document.getElementById('balance-icon');
+  const income = getMonthlyIncome();
+  const thisMonthDebt = getThisMonthDebtTotal();
+  const balance = income - thisMonthDebt;
+  const banner = document.getElementById('balance-banner');
+  const text = document.getElementById('balance-text');
+  const sub = document.getElementById('balance-sub');
+  const icon = document.getElementById('balance-icon');
   if (income === 0 && thisMonthDebt === 0) { banner.classList.add('hidden'); return; }
   banner.classList.remove('hidden');
   text.textContent = formatMoney(Math.abs(balance));
@@ -124,28 +131,30 @@ function renderBalance() {
 }
 
 function renderSummaries() {
-  var s = calcSummaries();
+  const s = calcSummaries();
   document.getElementById('sum-overdue').textContent = formatMoney(s.overdue);
   document.getElementById('sum-today').textContent = formatMoney(s.today);
   document.getElementById('sum-this-month').textContent = formatMoney(s.thisMonth + s.today);
-  var cards = document.querySelectorAll('#summary-grid > div');
+  const cards = document.querySelectorAll('#summary-grid > div');
   if (cards.length >= 6) {
     cards[3].querySelector('p:first-child').textContent = monthNameTR(1);
     cards[3].querySelector('p:last-child').textContent = formatMoney(s.next1);
+    cards[3].setAttribute('data-filter', 'month-1');
     cards[4].querySelector('p:first-child').textContent = monthNameTR(2);
     cards[4].querySelector('p:last-child').textContent = formatMoney(s.next2 + s.later);
+    cards[4].setAttribute('data-filter', 'month-2');
   }
   document.getElementById('sum-total').textContent = formatMoney(s.total);
 }
 
 function renderIncomes() {
-  var list = document.getElementById('income-list');
-  var empty = document.getElementById('income-empty');
+  const list = document.getElementById('income-list');
+  const empty = document.getElementById('income-empty');
   list.innerHTML = '';
   if (incomes.length === 0) { empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
   incomes.forEach(function(inc) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'bg-white rounded-xl p-3.5 card-shadow flex items-center justify-between fade-in';
     el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">Aylık</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
     list.appendChild(el);
@@ -153,25 +162,25 @@ function renderIncomes() {
 }
 
 function renderDebts() {
-  var filter = document.getElementById('debt-filter').value;
-  var list = document.getElementById('debt-list');
-  var empty = document.getElementById('debt-empty');
+  const filter = document.getElementById('debt-filter').value;
+  const list = document.getElementById('debt-list');
+  const empty = document.getElementById('debt-empty');
   list.innerHTML = '';
-  var items = getActiveInstallments();
+  let items = getActiveInstallments();
   if (filter === 'this-month') items = items.filter(function(i) { return isSameMonth(i.dueDate); });
   else if (filter === 'overdue') items = items.filter(function(i) { return isOverdue(i.dueDate); });
   else if (filter === 'upcoming') items = items.filter(function(i) { return !isOverdue(i.dueDate); });
   else if (filter.indexOf('month-') === 0) {
-    var offset = parseInt(filter.split('-')[1], 10);
+    const offset = parseInt(filter.split('-')[1], 10);
     items = items.filter(function(i) { return isMonthOffset(i.dueDate, offset); });
   }
   items.sort(function(a, b) { return a.dueDate.localeCompare(b.dueDate); });
   if (items.length === 0) { empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
   items.forEach(function(item) {
-    var isLate = isOverdue(item.dueDate);
-    var isTod = isToday(item.dueDate);
-    var el = document.createElement('div');
+    const isLate = isOverdue(item.dueDate);
+    const isTod = isToday(item.dueDate);
+    const el = document.createElement('div');
     el.className = 'bg-white rounded-xl p-4 card-shadow fade-in';
     el.innerHTML = '<div class="flex justify-between items-start"><div class="flex-1 min-w-0"><p class="text-xs text-gray-500 mb-0.5">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900 truncate">' + escapeHtml(item.name) + '</p><p class="text-xs font-medium text-blue-600 mt-1">(' + item.installmentLabel + ')</p></div><div class="text-right ml-3"><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount) + '</p>' + (isLate ? '<span class="text-xs text-red-500 font-medium">Gecikmiş</span>' : isTod ? '<span class="text-xs text-orange-500 font-medium">Bugün</span>' : '') + '</div></div><div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100"><button onclick="confirmMarkPaid(\'' + item.debtId + '\')" class="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-check-circle"></i> Ödendi</button><button onclick="editDebt(\'' + item.debtId + '\')" class="text-blue-600 hover:text-blue-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-pen"></i> Düzenle</button><button onclick="deleteDebt(\'' + item.debtId + '\')" class="text-red-500 hover:text-red-600 flex items-center gap-1.5 text-sm font-medium ml-auto"><i class="fas fa-times"></i></button></div>';
     list.appendChild(el);
@@ -179,10 +188,17 @@ function renderDebts() {
 }
 
 function renderFilterOptions() {
-  var sel = document.getElementById('debt-filter');
-  var current = sel.value;
-  sel.innerHTML = '<option value="this-month">Bu Ay</option><option value="overdue">Gecikmiş</option><option value="month-1">' + monthNameTR(1) + '</option><option value="month-2">' + monthNameTR(2) + '</option><option value="month-3">' + monthNameTR(3) + '</option><option value="upcoming">Yaklaşan (tümü)</option><option value="all">Tümü</option>';
-  for (var i = 0; i < sel.options.length; i++) {
+  const sel = document.getElementById('debt-filter');
+  const current = sel.value;
+  sel.innerHTML =
+    '<option value="this-month">Bu Ay</option>' +
+    '<option value="overdue">Gecikmiş</option>' +
+    '<option value="month-1">' + monthNameTR(1) + '</option>' +
+    '<option value="month-2">' + monthNameTR(2) + '</option>' +
+    '<option value="month-3">' + monthNameTR(3) + '</option>' +
+    '<option value="upcoming">Yaklaşan (tümü)</option>' +
+    '<option value="all">Tümü (Toplam)</option>';
+  for (let i = 0; i < sel.options.length; i++) {
     if (sel.options[i].value === current) { sel.value = current; break; }
   }
 }
@@ -196,20 +212,20 @@ function renderAll() {
 }
 
 function openNamePicker() {
-  var list = document.getElementById('name-picker-list');
-  var empty = document.getElementById('name-picker-empty');
+  const list = document.getElementById('name-picker-list');
+  const empty = document.getElementById('name-picker-empty');
   list.innerHTML = '';
-  var seen = {};
-  var names = [];
-  for (var i = debts.length - 1; i >= 0; i--) {
-    var name = (debts[i].name || '').trim();
+  const seen = {};
+  const names = [];
+  for (let i = debts.length - 1; i >= 0; i--) {
+    const name = (debts[i].name || '').trim();
     if (name && !seen[name.toLowerCase()]) { seen[name.toLowerCase()] = true; names.push(name); }
   }
   if (names.length === 0) empty.classList.remove('hidden');
   else {
     empty.classList.add('hidden');
     names.forEach(function(n) {
-      var btn = document.createElement('button');
+      const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'w-full text-left px-4 py-3 rounded-xl bg-gray-50 hover:bg-blue-50 border border-gray-100 text-gray-800 font-medium';
       btn.textContent = n;
@@ -223,32 +239,34 @@ function closeNamePicker() { document.getElementById('modal-name-picker').classL
 
 function openDebtModal(editId) {
   editingDebtId = editId || null;
-  var modal = document.getElementById('modal-debt');
-  var title = document.getElementById('debt-modal-title');
-  var form = document.getElementById('form-debt');
+  const modal = document.getElementById('modal-debt');
+  const title = document.getElementById('debt-modal-title');
+  const form = document.getElementById('form-debt');
   form.reset();
   document.getElementById('debt-id').value = '';
-  document.getElementById('debt-installments').value = 1;
+  document.getElementById('debt-installments').value = 2;
   document.getElementById('installment-fields').classList.add('hidden');
   document.getElementById('installment-preview').classList.add('hidden');
   document.getElementById('debt-recurring').checked = false;
   if (editId) {
-    var debt = debts.find(function(d) { return d.id === editId; });
+    const debt = debts.find(function(d) { return d.id === editId; });
     if (!debt) return;
     title.textContent = 'Borcu Düzenle';
     document.getElementById('debt-id').value = debt.id;
     document.getElementById('debt-name').value = debt.name;
-    document.getElementById('debt-total').value = debt.totalAmount;
+    document.getElementById('debt-total').value = debt.installmentAmount || debt.totalAmount;
     document.getElementById('debt-due').value = debt.startDate;
-    document.getElementById('debt-installments').value = debt.installmentCount;
-    document.getElementById('debt-recurring').checked = debt.installmentCount > 1 || !!debt.recurring;
-    if (debt.installmentCount > 1 || debt.recurring) {
+    document.getElementById('debt-installments').value = debt.installmentCount || 1;
+    const isMulti = (debt.installmentCount || 1) > 1;
+    document.getElementById('debt-recurring').checked = isMulti;
+    if (isMulti) {
       document.getElementById('installment-fields').classList.remove('hidden');
       updateInstallmentPreview();
     }
   } else {
     title.textContent = 'Yeni Borç Ekle';
-    var d = new Date(); d.setDate(d.getDate() + 7);
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
     document.getElementById('debt-due').value = d.toISOString().slice(0, 10);
   }
   modal.classList.remove('hidden');
@@ -260,39 +278,47 @@ function closeDebtModal() {
   editingDebtId = null;
 }
 function updateInstallmentPreview() {
-  var total = parseFloat(document.getElementById('debt-total').value) || 0;
-  var count = parseInt(document.getElementById('debt-installments').value) || 1;
-  var preview = document.getElementById('installment-preview');
-  var info = document.getElementById('installment-info');
-  if (count > 1 && total > 0) {
-    var each = Math.round((total / count) * 100) / 100;
-    info.textContent = count + ' taksit × ' + formatMoney(each) + ' = ' + formatMoney(total);
+  const amount = parseFloat(document.getElementById('debt-total').value) || 0;
+  const count = parseInt(document.getElementById('debt-installments').value) || 1;
+  const preview = document.getElementById('installment-preview');
+  const info = document.getElementById('installment-info');
+  if (count > 1 && amount > 0) {
+    const total = Math.round(amount * count * 100) / 100;
+    info.textContent = count + ' taksit × ' + formatMoney(amount) + ' = ' + formatMoney(total) + ' toplam';
     preview.classList.remove('hidden');
-  } else preview.classList.add('hidden');
+  } else {
+    preview.classList.add('hidden');
+  }
 }
 function saveDebt(e) {
   e.preventDefault();
-  var id = document.getElementById('debt-id').value || uid();
-  var name = document.getElementById('debt-name').value.trim();
-  var totalAmount = parseFloat(document.getElementById('debt-total').value);
-  var startDate = document.getElementById('debt-due').value;
-  var isRecurring = document.getElementById('debt-recurring').checked;
-  var installmentCount = 1;
-  if (isRecurring) {
+  const id = document.getElementById('debt-id').value || uid();
+  const name = document.getElementById('debt-name').value.trim();
+  const installmentAmount = parseFloat(document.getElementById('debt-total').value);
+  const startDate = document.getElementById('debt-due').value;
+  const isMulti = document.getElementById('debt-recurring').checked;
+  let installmentCount = 1;
+  if (isMulti) {
     installmentCount = parseInt(document.getElementById('debt-installments').value) || 1;
     if (installmentCount < 1) installmentCount = 1;
   }
-  if (!name || !totalAmount || !startDate) { showToast('Lütfen zorunlu alanları doldurun'); return; }
-  var installmentAmount = Math.round((totalAmount / installmentCount) * 100) / 100;
-  var existingIdx = debts.findIndex(function(d) { return d.id === id; });
-  var paidInstallments = 0;
-  if (existingIdx >= 0) {
-    var old = debts[existingIdx];
-    if (old.startDate === startDate && old.installmentCount === installmentCount) paidInstallments = old.paidInstallments || 0;
+  if (!name || !installmentAmount || !startDate) {
+    showToast('Lütfen zorunlu alanları doldurun');
+    return;
   }
-  var debtObj = {
-    id: id, name: name, category: '', totalAmount: totalAmount, installmentCount: installmentCount,
-    installmentAmount: installmentAmount, startDate: startDate, note: '', recurring: isRecurring,
+  const totalAmount = Math.round(installmentAmount * installmentCount * 100) / 100;
+  const existingIdx = debts.findIndex(function(d) { return d.id === id; });
+  let paidInstallments = 0;
+  if (existingIdx >= 0) {
+    const old = debts[existingIdx];
+    if (old.startDate === startDate && old.installmentCount === installmentCount && old.installmentAmount === installmentAmount) {
+      paidInstallments = old.paidInstallments || 0;
+    }
+  }
+  const debtObj = {
+    id: id, name: name, category: '', totalAmount: totalAmount,
+    installmentCount: installmentCount, installmentAmount: installmentAmount,
+    startDate: startDate, note: '', recurring: isMulti,
     paidInstallments: paidInstallments,
     createdAt: existingIdx >= 0 ? debts[existingIdx].createdAt : new Date().toISOString()
   };
@@ -305,16 +331,11 @@ function confirmMarkPaid(debtId) {
   markPaid(debtId);
 }
 function markPaid(debtId) {
-  var debt = debts.find(function(d) { return d.id === debtId; });
+  const debt = debts.find(function(d) { return d.id === debtId; });
   if (!debt) return;
   debt.paidInstallments = (debt.paidInstallments || 0) + 1;
-  if (debt.paidInstallments >= debt.installmentCount) {
-    if (debt.recurring) {
-      debt.startDate = addMonths(debt.startDate, debt.installmentCount);
-      debt.paidInstallments = 0;
-      showToast('Taksit ödendi (tekrar eden borç yenilendi)');
-    } else showToast('Borç tamamen ödendi');
-  } else showToast('Taksit ödendi (' + debt.paidInstallments + '/' + debt.installmentCount + ')');
+  if (debt.paidInstallments >= debt.installmentCount) showToast('Borç tamamen ödendi');
+  else showToast('Taksit ödendi (' + debt.paidInstallments + '/' + debt.installmentCount + ')');
   saveDebts(); renderAll();
 }
 function editDebt(debtId) { openDebtModal(debtId); }
@@ -335,8 +356,8 @@ function closeIncomeModal() {
 }
 function saveIncome(e) {
   e.preventDefault();
-  var name = document.getElementById('income-name').value.trim();
-  var amount = parseFloat(document.getElementById('income-amount').value);
+  const name = document.getElementById('income-name').value.trim();
+  const amount = parseFloat(document.getElementById('income-amount').value);
   if (!name || !amount) return;
   incomes.push({ id: uid(), name: name, amount: amount, createdAt: new Date().toISOString() });
   saveIncomes(); closeIncomeModal(); showToast('Gelir eklendi'); renderAll();
@@ -351,23 +372,25 @@ function openSettings() { document.getElementById('modal-settings').classList.re
 function closeSettings() { document.getElementById('modal-settings').classList.add('hidden'); }
 
 function exportData() {
-  var data = { debts: debts, incomes: incomes, exportedAt: new Date().toISOString() };
-  var json = JSON.stringify(data, null, 2);
+  const data = { debts: debts, incomes: incomes, exportedAt: new Date().toISOString() };
+  const json = JSON.stringify(data, null, 2);
   if (navigator.share) {
-    var blob = new Blob([json], { type: 'application/json' });
-    var file = new File([blob], 'borc-takip-' + todayStr() + '.json', { type: 'application/json' });
-    navigator.share({ title: 'Borç Takip Yedek', files: [file] }).then(function() {
-      showToast('Paylaşım açıldı'); closeSettings();
-    }).catch(function() { fallbackExport(json); });
-    return;
+    try {
+      const blob = new Blob([json], { type: 'application/json' });
+      const file = new File([blob], 'borc-takip-' + todayStr() + '.json', { type: 'application/json' });
+      navigator.share({ title: 'Borç Takip Yedek', files: [file] }).then(function() {
+        showToast('Paylaşım açıldı'); closeSettings();
+      }).catch(function() { fallbackExport(json); });
+      return;
+    } catch (e) { fallbackExport(json); return; }
   }
   fallbackExport(json);
 }
 function fallbackExport(json) {
   try {
-    var blob = new Blob([json], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     a.href = url; a.download = 'borc-takip-' + todayStr() + '.json'; a.style.display = 'none';
     document.body.appendChild(a); a.click();
     setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
@@ -379,11 +402,11 @@ function fallbackExport(json) {
   closeSettings();
 }
 function importData(e) {
-  var file = e.target.files[0]; if (!file) return;
-  var reader = new FileReader();
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
   reader.onload = function(ev) {
     try {
-      var data = JSON.parse(ev.target.result);
+      const data = JSON.parse(ev.target.result);
       if (data.debts) debts = data.debts;
       if (data.incomes) incomes = data.incomes;
       saveDebts(); saveIncomes(); renderAll();
@@ -399,7 +422,7 @@ function clearAllData() {
 }
 
 function isModalOpen(id) {
-  var el = document.getElementById(id);
+  const el = document.getElementById(id);
   return el && !el.classList.contains('hidden');
 }
 function handleBackButton() {
@@ -425,7 +448,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('debt-total').addEventListener('input', updateInstallmentPreview);
   document.getElementById('debt-installments').addEventListener('input', updateInstallmentPreview);
   document.getElementById('debt-recurring').addEventListener('change', function(e) {
-    var fields = document.getElementById('installment-fields');
+    const fields = document.getElementById('installment-fields');
     if (e.target.checked) {
       fields.classList.remove('hidden');
       if (parseInt(document.getElementById('debt-installments').value) < 2) document.getElementById('debt-installments').value = 2;
@@ -433,8 +456,32 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
       fields.classList.add('hidden');
       document.getElementById('debt-installments').value = 1;
+      document.getElementById('installment-preview').classList.add('hidden');
     }
   });
-  var pickBtn = document.getElementById('btn-pick-name');
+  const grid = document.getElementById('summary-grid');
+  if (grid) {
+    grid.addEventListener('click', function(e) {
+      const card = e.target.closest('[data-filter]');
+      if (!card) return;
+      const f = card.getAttribute('data-filter');
+      if (f) { document.getElementById('debt-filter').value = f; renderDebts(); }
+    });
+  }
+  const thisMonthCard = document.querySelector('#summary-grid > div:nth-child(3)');
+  if (thisMonthCard) {
+    thisMonthCard.style.cursor = 'pointer';
+    thisMonthCard.addEventListener('click', function() {
+      document.getElementById('debt-filter').value = 'this-month'; renderDebts();
+    });
+  }
+  const totalCard = document.querySelector('#summary-grid > div:nth-child(6)');
+  if (totalCard) {
+    totalCard.style.cursor = 'pointer';
+    totalCard.addEventListener('click', function() {
+      document.getElementById('debt-filter').value = 'all'; renderDebts();
+    });
+  }
+  const pickBtn = document.getElementById('btn-pick-name');
   if (pickBtn) pickBtn.addEventListener('click', openNamePicker);
 });
