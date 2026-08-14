@@ -40,13 +40,26 @@ jobs:
           ls -la www/
 
       - name: Install npm dependencies
-        run: |
-          npm install --prefer-offline --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Add Android platform with Capacitor
         run: |
-          npx cap add android
+          npx cap add android || true
           npx cap sync android
+
+      - name: Add storage permissions to AndroidManifest
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            if ! grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
+              sed -i '/<application/i\    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />' "$MANIFEST"
+            fi
+            echo "=== Permissions ==="
+            grep -E "uses-permission" "$MANIFEST" || true
+          else
+            echo "Manifest not found yet"
+            ls -la android/app/src/main/ || true
+          fi
 
       - name: Build Debug APK
         working-directory: android
@@ -56,10 +69,10 @@ jobs:
 
       - name: Locate APK
         run: |
-          find android -name "*.apk" -type f
           APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
             echo "APK bulunamadı!"
+            find android -name "*.apk" -type f || true
             exit 1
           fi
           cp "$APK_PATH" ./borc-takip.apk
