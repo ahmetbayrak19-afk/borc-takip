@@ -1,6 +1,6 @@
 {
   "name": "borc-takip",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Borç ve gelir takip uygulaması",
   "main": "index.html",
   "scripts": {
@@ -13,6 +13,7 @@
   "license": "MIT",
   "dependencies": {
     "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
     "@capacitor/core": "^6.1.2"
   },
   "devDependencies": {
