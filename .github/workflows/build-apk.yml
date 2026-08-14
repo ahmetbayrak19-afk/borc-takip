@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:   # Manuel çalıştırma için
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,9 +17,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
-      - name: Set up Java (for Android Gradle)
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
@@ -30,48 +29,45 @@ jobs:
 
       - name: Accept Android licenses
         run: |
-          yes | sdkmanager --licenses || true
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
 
       - name: Create www directory and copy web assets
         run: |
           mkdir -p www
           cp index.html www/
           cp app.js www/
-          echo "Web assets hazırlandı"
+          ls -la www/
 
       - name: Install npm dependencies
-        run: npm install
-
-      - name: Initialize Capacitor & add Android platform
         run: |
-          npx cap add android || true
+          npm install --prefer-offline --no-audit --no-fund
+
+      - name: Add Android platform with Capacitor
+        run: |
+          npx cap add android
           npx cap sync android
 
       - name: Build Debug APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Find and prepare APK
-        id: find_apk
+      - name: Locate APK
         run: |
+          find android -name "*.apk" -type f
           APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
-          echo "APK bulundu: $APK_PATH"
+          if [ -z "$APK_PATH" ]; then
+            echo "APK bulunamadı!"
+            exit 1
+          fi
           cp "$APK_PATH" ./borc-takip.apk
-          echo "apk_path=borc-takip.apk" >> $GITHUB_OUTPUT
           ls -lh borc-takip.apk
 
-      - name: Upload APK as Artifact
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: borc-takip-apk
           path: borc-takip.apk
           retention-days: 30
-
-      - name: Summary
-        run: |
-          echo "### ✅ APK başarıyla oluşturuldu!" >> $GITHUB_STEP_SUMMARY
-          echo "Artifacts sekmesinden **borc-takip-apk** indirip telefonuna yükleyebilirsin." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Not: Debug APK olduğu için imza uyarısı çıkabilir, 'Yine de yükle' diyerek kurabilirsin." >> $GITHUB_STEP_SUMMARY
