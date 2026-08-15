@@ -130,7 +130,7 @@ function showToast(msg) {
 }
 function escapeHtml(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
 }
 function loadData() {
   try {
@@ -868,9 +868,15 @@ function setupBackButton() {
 
 function hideSplash() {
   const s = document.getElementById('splash');
+  const root = document.getElementById('app-root');
+  if (root) root.classList.add('visible');
+  document.body.classList.add('app-ready');
   if (!s) return;
   s.classList.add('fade-out');
-  setTimeout(function() { s.style.display = 'none'; }, 450);
+  setTimeout(function() {
+    s.style.display = 'none';
+    s.remove();
+  }, 600);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -878,7 +884,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadData();
   renderAll();
   setupBackButton();
-  setTimeout(hideSplash, 1000);
+  setTimeout(hideSplash, 1100);
   setTimeout(scheduleDueNotifications, 1500);
 
   document.getElementById('btn-add-debt').addEventListener('click', function() { openDebtModal(); });
