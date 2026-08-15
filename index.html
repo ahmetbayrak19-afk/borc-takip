@@ -16,9 +16,20 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     .slide-up { animation: slideUp 0.3s ease-out; }
     @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+    #splash {
+      background: linear-gradient(160deg, #071428 0%, #0b1b3a 45%, #123a6b 100%);
+      transition: opacity 0.4s ease;
+    }
+    #splash.fade-out { opacity: 0; pointer-events: none; }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800">
+  <div id="splash" class="fixed inset-0 z-[100] flex flex-col items-center justify-center">
+    <img src="logo.png" alt="Borç Takip" class="w-36 h-36 rounded-3xl shadow-2xl object-cover" />
+    <p class="mt-5 text-white text-2xl font-bold tracking-wide">BORÇ TAKİP</p>
+    <p class="mt-1 text-blue-200/80 text-sm">Borç ve gelir yönetimi</p>
+  </div>
+
   <header class="bg-white sticky top-0 z-40 border-b border-gray-200">
     <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
       <h1 id="page-title" class="text-xl font-bold text-gray-900">Genel Bakış</h1>
@@ -31,7 +42,7 @@
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0 flex-1">
           <p class="text-sm opacity-90">Aylık Durum</p>
-          <p id="balance-text" class="text-2xl font-bold mt-0.5">₺0,00</p>
+          <div id="balance-lines"></div>
           <p id="balance-sub" class="text-xs opacity-80 mt-1"></p>
         </div>
         <div class="flex flex-col items-end gap-2 shrink-0">
@@ -123,10 +134,16 @@
             </button>
           </div>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-600 mb-1.5">Tutar (₺) <span class="text-gray-400 font-normal text-xs">— her taksit</span></label>
-          <input type="number" id="debt-total" required min="1" step="0.01" placeholder="Örn: 2000"
-                 class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1.5">Tutar <span class="text-gray-400 font-normal text-xs">— her taksit</span></label>
+            <input type="number" id="debt-total" required min="0.01" step="0.01" placeholder="2000"
+                   class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1.5">Para Birimi</label>
+            <select id="debt-currency" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"></select>
+          </div>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Ödeme Tarihi</label>
@@ -162,12 +179,53 @@
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Gelir Adı</label>
           <input type="text" id="income-name" required placeholder="Örn: Maaş..." class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-600 mb-1.5">Aylık Tutar (₺)</label>
-          <input type="number" id="income-amount" required min="1" step="0.01" placeholder="0,00" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1.5">Aylık Tutar</label>
+            <input type="number" id="income-amount" required min="0.01" step="0.01" placeholder="0,00" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1.5">Para Birimi</label>
+            <select id="income-currency" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"></select>
+          </div>
         </div>
         <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl">Kaydet</button>
       </form>
+    </div>
+  </div>
+
+  <div id="modal-partial" class="fixed inset-0 z-[55] hidden">
+    <div class="absolute inset-0 bg-black/40" onclick="closePartialModal()"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl slide-up p-5">
+      <h2 class="font-bold text-lg mb-1">Kısmi Ödeme</h2>
+      <p id="partial-info" class="text-sm text-gray-500 mb-4"></p>
+      <label class="block text-sm font-medium text-gray-600 mb-1.5">Ödenecek tutar</label>
+      <input type="number" id="partial-amount" min="0.01" step="0.01" class="w-full border border-gray-200 rounded-xl px-4 py-3 mb-4 focus:ring-2 focus:ring-blue-500 outline-none" />
+      <button onclick="submitPartialAmount()" class="w-full bg-blue-600 text-white font-semibold py-3.5 rounded-xl">Devam</button>
+      <button onclick="closePartialModal()" class="w-full mt-2 py-3 text-gray-600">İptal</button>
+    </div>
+  </div>
+
+  <div id="modal-pay-source" class="fixed inset-0 z-[56] hidden">
+    <div class="absolute inset-0 bg-black/40" onclick="closePaySourceModal()"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl slide-up p-5">
+      <h2 class="font-bold text-lg mb-1">Ödeme kaynağı</h2>
+      <p id="pay-source-info" class="text-sm text-gray-500 mb-4"></p>
+      <button onclick="confirmPaySource('salary')" class="w-full flex items-center gap-3 p-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-left mb-2 border border-blue-100">
+        <i class="fas fa-wallet text-blue-600 text-xl"></i>
+        <div>
+          <p class="font-semibold text-gray-900">Maaştan / kayıtlardan ödedim</p>
+          <p class="text-xs text-gray-500">Aylık durum aynı kalır (gelirden düşülür)</p>
+        </div>
+      </button>
+      <button onclick="confirmPaySource('extra')" class="w-full flex items-center gap-3 p-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-left mb-2 border border-emerald-100">
+        <i class="fas fa-coins text-emerald-600 text-xl"></i>
+        <div>
+          <p class="font-semibold text-gray-900">Ekstra para ile ödedim</p>
+          <p class="text-xs text-gray-500">Kayıtlı gelire dokunulmaz, durum iyileşir</p>
+        </div>
+      </button>
+      <button onclick="closePaySourceModal()" class="w-full mt-2 py-3 text-gray-600">İptal</button>
     </div>
   </div>
 
@@ -178,6 +236,9 @@
       <div class="space-y-3">
         <button onclick="openMonthsModal()" class="w-full flex items-center gap-3 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-left">
           <i class="fas fa-calendar-alt text-blue-600"></i><span>Borçlara aylara göre bak</span>
+        </button>
+        <button onclick="requestNotifPermission()" class="w-full flex items-center gap-3 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-left">
+          <i class="fas fa-bell text-amber-600"></i><span>Bildirim izni / test</span>
         </button>
         <button onclick="exportData()" class="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 text-left">
           <i class="fas fa-download text-blue-600"></i><span>Verileri Dışa Aktar</span>
