@@ -6,6 +6,48 @@ let incomes = [];
 let editingDebtId = null;
 let currentFilter = 'this-month';
 
+const FILTER_THEMES = {
+  overdue: {
+    card: 'bg-rose-50 rounded-xl p-3 card-shadow text-center border border-rose-100',
+    cardActive: 'bg-rose-50 rounded-xl p-3 card-shadow text-center border-2 border-rose-400',
+    debt: 'bg-rose-50 rounded-xl p-4 card-shadow fade-in border border-rose-200',
+    label: 'text-rose-600'
+  },
+  today: {
+    card: 'bg-amber-50 rounded-xl p-3 card-shadow text-center border border-amber-100',
+    cardActive: 'bg-amber-50 rounded-xl p-3 card-shadow text-center border-2 border-amber-400',
+    debt: 'bg-amber-50 rounded-xl p-4 card-shadow fade-in border border-amber-200',
+    label: 'text-amber-600'
+  },
+  'this-month': {
+    card: 'bg-sky-50 rounded-xl p-3 card-shadow text-center border border-sky-100',
+    cardActive: 'bg-sky-50 rounded-xl p-3 card-shadow text-center border-2 border-sky-400',
+    debt: 'bg-sky-50 rounded-xl p-4 card-shadow fade-in border border-sky-200',
+    label: 'text-sky-600'
+  },
+  'month-1': {
+    card: 'bg-yellow-50 rounded-xl p-3 card-shadow text-center border border-yellow-100',
+    cardActive: 'bg-yellow-50 rounded-xl p-3 card-shadow text-center border-2 border-yellow-400',
+    debt: 'bg-yellow-50 rounded-xl p-4 card-shadow fade-in border border-yellow-200',
+    label: 'text-yellow-700'
+  },
+  'month-2': {
+    card: 'bg-violet-50 rounded-xl p-3 card-shadow text-center border border-violet-100',
+    cardActive: 'bg-violet-50 rounded-xl p-3 card-shadow text-center border-2 border-violet-400',
+    debt: 'bg-violet-50 rounded-xl p-4 card-shadow fade-in border border-violet-200',
+    label: 'text-violet-600'
+  },
+  all: {
+    card: 'bg-slate-50 rounded-xl p-3 card-shadow text-center border border-slate-100',
+    cardActive: 'bg-slate-50 rounded-xl p-3 card-shadow text-center border-2 border-slate-400',
+    debt: 'bg-slate-50 rounded-xl p-4 card-shadow fade-in border border-slate-200',
+    label: 'text-slate-600'
+  }
+};
+function getTheme(filter) {
+  return FILTER_THEMES[filter] || FILTER_THEMES['this-month'];
+}
+
 function formatMoney(amount) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }).format(amount || 0);
 }
@@ -18,12 +60,12 @@ function toLocalDateStr(d) {
 function formatDateTR(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr + 'T12:00:00');
-  const days = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const days = ['Pazar','Pazartesi','Sal\u0131','\u00c7ar\u015famba','Per\u015fembe','Cuma','Cumartesi'];
+  const months = ['Ocak','\u015eubat','Mart','Nisan','May\u0131s','Haziran','Temmuz','A\u011fustos','Eyl\u00fcl','Ekim','Kas\u0131m','Aral\u0131k'];
   return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + days[d.getDay()];
 }
 function monthNameTR(offset) {
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const months = ['Ocak','\u015eubat','Mart','Nisan','May\u0131s','Haziran','Temmuz','A\u011fustos','Eyl\u00fcl','Ekim','Kas\u0131m','Aral\u0131k'];
   const d = new Date();
   d.setMonth(d.getMonth() + offset);
   return months[d.getMonth()];
@@ -121,11 +163,11 @@ function renderBalance() {
   text.textContent = formatMoney(Math.abs(balance));
   if (balance >= 0) {
     banner.className = 'mt-4 rounded-2xl p-4 text-white fade-in bg-gradient-to-r from-emerald-500 to-green-600';
-    sub.textContent = 'Artıdasınız • Gelir: ' + formatMoney(income) + ' | Bu ay borç: ' + formatMoney(thisMonthDebt);
+    sub.textContent = 'Art\u0131das\u0131n\u0131z \u2022 Gelir: ' + formatMoney(income) + ' | Bu ay bor\u00e7: ' + formatMoney(thisMonthDebt);
     icon.innerHTML = '<i class="fas fa-arrow-up"></i>';
   } else {
     banner.className = 'mt-4 rounded-2xl p-4 text-white fade-in bg-gradient-to-r from-rose-500 to-red-600';
-    sub.textContent = 'Eksidesiniz • Gelir: ' + formatMoney(income) + ' | Bu ay borç: ' + formatMoney(thisMonthDebt);
+    sub.textContent = 'Eksidesiniz \u2022 Gelir: ' + formatMoney(income) + ' | Bu ay bor\u00e7: ' + formatMoney(thisMonthDebt);
     icon.innerHTML = '<i class="fas fa-arrow-down"></i>';
   }
 }
@@ -145,11 +187,8 @@ function renderSummaries() {
     for (let i = 0; i < 6; i++) {
       cards[i].setAttribute('data-filter', filters[i]);
       cards[i].style.cursor = 'pointer';
-      if (filters[i] === currentFilter) {
-        cards[i].className = 'bg-blue-50 rounded-xl p-3 card-shadow text-center border-2 border-blue-500';
-      } else {
-        cards[i].className = 'bg-white rounded-xl p-3 card-shadow text-center';
-      }
+      const th = getTheme(filters[i]);
+      cards[i].className = (filters[i] === currentFilter) ? th.cardActive : th.card;
     }
   }
   document.getElementById('sum-total').textContent = formatMoney(s.total);
@@ -164,7 +203,7 @@ function renderIncomes() {
   incomes.forEach(function(inc) {
     const el = document.createElement('div');
     el.className = 'bg-white rounded-xl p-3.5 card-shadow flex items-center justify-between fade-in';
-    el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">Aylık</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
+    el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">Ayl\u0131k</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
     list.appendChild(el);
   });
 }
@@ -190,23 +229,27 @@ function renderDebts() {
     const isLate = isOverdue(item.dueDate);
     const isTod = isToday(item.dueDate);
     const el = document.createElement('div');
-    el.className = 'bg-white rounded-xl p-4 card-shadow fade-in';
-    el.innerHTML = '<div class="flex justify-between items-start"><div class="flex-1 min-w-0"><p class="text-xs text-gray-500 mb-0.5">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900 truncate">' + escapeHtml(item.name) + '</p><p class="text-xs font-medium text-blue-600 mt-1">(' + item.installmentLabel + ')</p></div><div class="text-right ml-3"><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount) + '</p>' + (isLate ? '<span class="text-xs text-red-500 font-medium">Gecikmiş</span>' : isTod ? '<span class="text-xs text-orange-500 font-medium">Bugün</span>' : '') + '</div></div><div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100"><button onclick="confirmMarkPaid(\'' + item.debtId + '\')" class="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-check-circle"></i> Ödendi</button><button onclick="editDebt(\'' + item.debtId + '\')" class="text-blue-600 hover:text-blue-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-pen"></i> Düzenle</button><button onclick="deleteDebt(\'' + item.debtId + '\')" class="text-red-500 hover:text-red-600 flex items-center gap-1.5 text-sm font-medium ml-auto"><i class="fas fa-times"></i></button></div>';
+    el.className = getTheme(filter).debt;
+    el.innerHTML = '<div class="flex justify-between items-start"><div class="flex-1 min-w-0"><p class="text-xs text-gray-500 mb-0.5">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900 truncate">' + escapeHtml(item.name) + '</p><p class="text-xs font-medium text-blue-600 mt-1">(' + item.installmentLabel + ')</p></div><div class="text-right ml-3"><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount) + '</p>' + (isLate ? '<span class="text-xs text-red-500 font-medium">Gecikmi\u015f</span>' : isTod ? '<span class="text-xs text-orange-500 font-medium">Bug\u00fcn</span>' : '') + '</div></div><div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100"><button onclick="confirmMarkPaid(\'' + item.debtId + '\')" class="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-check-circle"></i> \u00d6dendi</button><button onclick="editDebt(\'' + item.debtId + '\')" class="text-blue-600 hover:text-blue-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-pen"></i> D\u00fczenle</button><button onclick="deleteDebt(\'' + item.debtId + '\')" class="text-red-500 hover:text-red-600 flex items-center gap-1.5 text-sm font-medium ml-auto"><i class="fas fa-times"></i></button></div>';
     list.appendChild(el);
   });
 }
 
 function filterLabel(f) {
-  if (f === 'today') return 'Bugün';
+  if (f === 'today') return 'Bug\u00fcn';
   if (f === 'this-month') return 'Bu Ay';
-  if (f === 'overdue') return 'Gecikmiş';
-  if (f === 'all') return 'Tümü';
+  if (f === 'overdue') return 'Gecikmi\u015f';
+  if (f === 'all') return 'T\u00fcm\u00fc';
   if (f && f.indexOf('month-') === 0) return monthNameTR(parseInt(f.split('-')[1], 10));
   return 'Bu Ay';
 }
 function renderFilterOptions() {
   const label = document.getElementById('debt-list-label');
-  if (label) label.textContent = filterLabel(currentFilter);
+  if (label) {
+    label.textContent = filterLabel(currentFilter);
+    const th = getTheme(currentFilter);
+    label.className = 'text-xs font-medium ' + th.label;
+  }
 }
 function renderAll() {
   renderFilterOptions();
@@ -256,7 +299,7 @@ function openDebtModal(editId) {
   if (editId) {
     const debt = debts.find(function(d) { return d.id === editId; });
     if (!debt) return;
-    title.textContent = 'Borcu Düzenle';
+    title.textContent = 'Borcu D\u00fczenle';
     document.getElementById('debt-id').value = debt.id;
     document.getElementById('debt-name').value = debt.name;
     document.getElementById('debt-total').value = debt.installmentAmount || debt.totalAmount;
@@ -269,7 +312,7 @@ function openDebtModal(editId) {
       updateInstallmentPreview();
     }
   } else {
-    title.textContent = 'Yeni Borç Ekle';
+    title.textContent = 'Yeni Bor\u00e7 Ekle';
     const d = new Date();
     d.setDate(d.getDate() + 7);
     document.getElementById('debt-due').value = toLocalDateStr(d);
@@ -289,7 +332,7 @@ function updateInstallmentPreview() {
   const info = document.getElementById('installment-info');
   if (count > 1 && amount > 0) {
     const total = Math.round(amount * count * 100) / 100;
-    info.textContent = count + ' taksit × ' + formatMoney(amount) + ' = ' + formatMoney(total) + ' toplam';
+    info.textContent = count + ' taksit \u00d7 ' + formatMoney(amount) + ' = ' + formatMoney(total) + ' toplam';
     preview.classList.remove('hidden');
   } else preview.classList.add('hidden');
 }
@@ -305,7 +348,7 @@ function saveDebt(e) {
     installmentCount = parseInt(document.getElementById('debt-installments').value) || 1;
     if (installmentCount < 1) installmentCount = 1;
   }
-  if (!name || !installmentAmount || !startDate) { showToast('Lütfen zorunlu alanları doldurun'); return; }
+  if (!name || !installmentAmount || !startDate) { showToast('L\u00fctfen zorunlu alanlar\u0131 doldurun'); return; }
   const totalAmount = Math.round(installmentAmount * installmentCount * 100) / 100;
   const existingIdx = debts.findIndex(function(d) { return d.id === id; });
   let paidInstallments = 0;
@@ -321,27 +364,27 @@ function saveDebt(e) {
     paidInstallments: paidInstallments,
     createdAt: existingIdx >= 0 ? debts[existingIdx].createdAt : new Date().toISOString()
   };
-  if (existingIdx >= 0) { debts[existingIdx] = debtObj; showToast('Borç güncellendi'); }
-  else { debts.push(debtObj); showToast('Borç eklendi'); }
+  if (existingIdx >= 0) { debts[existingIdx] = debtObj; showToast('Bor\u00e7 g\u00fcncellendi'); }
+  else { debts.push(debtObj); showToast('Bor\u00e7 eklendi'); }
   saveDebts(); closeDebtModal(); renderAll();
 }
 function confirmMarkPaid(debtId) {
-  if (!confirm('Bu taksiti ödendi olarak işaretlemek istiyor musunuz?')) return;
+  if (!confirm('Bu taksiti \u00f6dendi olarak i\u015faretlemek istiyor musunuz?')) return;
   markPaid(debtId);
 }
 function markPaid(debtId) {
   const debt = debts.find(function(d) { return d.id === debtId; });
   if (!debt) return;
   debt.paidInstallments = (debt.paidInstallments || 0) + 1;
-  if (debt.paidInstallments >= debt.installmentCount) showToast('Borç tamamen ödendi');
-  else showToast('Taksit ödendi (' + debt.paidInstallments + '/' + debt.installmentCount + ')');
+  if (debt.paidInstallments >= debt.installmentCount) showToast('Bor\u00e7 tamamen \u00f6dendi');
+  else showToast('Taksit \u00f6dendi (' + debt.paidInstallments + '/' + debt.installmentCount + ')');
   saveDebts(); renderAll();
 }
 function editDebt(debtId) { openDebtModal(debtId); }
 function deleteDebt(debtId) {
-  if (!confirm('Bu borcu silmek istediğinize emin misiniz?')) return;
+  if (!confirm('Bu borcu silmek istedi\u011finize emin misiniz?')) return;
   debts = debts.filter(function(d) { return d.id !== debtId; });
-  saveDebts(); showToast('Borç silindi'); renderAll();
+  saveDebts(); showToast('Bor\u00e7 silindi'); renderAll();
 }
 
 function openIncomeModal() {
@@ -398,23 +441,23 @@ async function saveBackupFile(json, filename) {
         } catch (e1) {}
         if (SharePlugin && SharePlugin.share) {
           try {
-            const shareOpts = { title: 'Borç Takip Yedek', dialogTitle: 'Yedeği kaydet veya paylaş' };
+            const shareOpts = { title: 'Bor\u00e7 Takip Yedek', dialogTitle: 'Yede\u011fi kaydet veya payla\u015f' };
             if (uri) shareOpts.url = uri;
             else shareOpts.text = json;
             await SharePlugin.share(shareOpts);
             showToast('Kaydedildi: ' + filename);
             return;
           } catch (e2) {
-            showToast('Belgeler klasörüne kaydedildi: ' + filename);
+            showToast('Belgeler klas\u00f6r\u00fcne kaydedildi: ' + filename);
             return;
           }
         }
-        showToast('Belgeler klasörüne kaydedildi: ' + filename);
+        showToast('Belgeler klas\u00f6r\u00fcne kaydedildi: ' + filename);
         return;
       }
     } catch (err) {
-      console.error('Filesystem kaydetme hatası', err);
-      showToast('Kayıt hatası, panoya kopyalanıyor...');
+      console.error('Filesystem kaydetme hatas\u0131', err);
+      showToast('Kay\u0131t hatas\u0131, panoya kopyalan\u0131yor...');
       copyTextFallback(json);
       return;
     }
@@ -432,7 +475,7 @@ async function saveBackupFile(json, filename) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 800);
-    showToast('İndirildi: ' + filename);
+    showToast('\u0130ndirildi: ' + filename);
   } catch (e) {
     copyTextFallback(json);
   }
@@ -441,12 +484,12 @@ async function saveBackupFile(json, filename) {
 function copyTextFallback(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(function() {
-      showToast('JSON panoya kopyalandı');
+      showToast('JSON panoya kopyaland\u0131');
     }).catch(function() {
-      showToast('Dışa aktarma başarısız');
+      showToast('D\u0131\u015fa aktarma ba\u015far\u0131s\u0131z');
     });
   } else {
-    showToast('Dışa aktarma desteklenmiyor');
+    showToast('D\u0131\u015fa aktarma desteklenmiyor');
   }
 }
 
@@ -459,15 +502,15 @@ function importData(e) {
       if (data.debts) debts = data.debts;
       if (data.incomes) incomes = data.incomes;
       saveDebts(); saveIncomes(); renderAll();
-      showToast('Veriler yüklendi'); closeSettings();
-    } catch (err) { showToast('Geçersiz dosya'); }
+      showToast('Veriler y\u00fcklendi'); closeSettings();
+    } catch (err) { showToast('Ge\u00e7ersiz dosya'); }
   };
   reader.readAsText(file);
 }
 function clearAllData() {
-  if (!confirm('TÜM borç ve gelir verileri silinecek. Emin misiniz?')) return;
+  if (!confirm('T\u00dcM bor\u00e7 ve gelir verileri silinecek. Emin misiniz?')) return;
   debts = []; incomes = []; saveDebts(); saveIncomes(); renderAll();
-  showToast('Tüm veriler silindi'); closeSettings();
+  showToast('T\u00fcm veriler silindi'); closeSettings();
 }
 
 function getMonthKey(dateStr) {
@@ -476,7 +519,7 @@ function getMonthKey(dateStr) {
 }
 function monthTitleFromKey(key) {
   const parts = key.split('-');
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const months = ['Ocak','\u015eubat','Mart','Nisan','May\u0131s','Haziran','Temmuz','A\u011fustos','Eyl\u00fcl','Ekim','Kas\u0131m','Aral\u0131k'];
   return months[parseInt(parts[1], 10) - 1] + ' ' + parts[0];
 }
 function openMonthsModal() {
@@ -493,14 +536,14 @@ function openMonthsModal() {
   const list = document.getElementById('months-list');
   list.innerHTML = '';
   if (keys.length === 0) {
-    list.innerHTML = '<p class="text-center text-gray-400 py-8">Henüz borç yok.</p>';
+    list.innerHTML = '<p class="text-center text-gray-400 py-8">Hen\u00fcz bor\u00e7 yok.</p>';
   } else {
     keys.forEach(function(key) {
       const m = byMonth[key];
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'w-full flex items-center justify-between px-4 py-3.5 rounded-xl bg-gray-50 hover:bg-blue-50 border border-gray-100 text-left';
-      btn.innerHTML = '<div><p class="font-semibold text-gray-900">' + monthTitleFromKey(key) + '</p><p class="text-xs text-gray-500">' + m.count + ' borç</p></div><span class="font-bold text-gray-800">' + formatMoney(m.total) + '</span>';
+      btn.innerHTML = '<div><p class="font-semibold text-gray-900">' + monthTitleFromKey(key) + '</p><p class="text-xs text-gray-500">' + m.count + ' bor\u00e7</p></div><span class="font-bold text-gray-800">' + formatMoney(m.total) + '</span>';
       btn.onclick = function() { openMonthDebtsModal(key); };
       list.appendChild(btn);
     });
