@@ -1,10 +1,25 @@
 // ==================== BORÇ TAKİP APP ====================
 const STORAGE_DEBTS = 'borc_takip_debts';
 const STORAGE_INCOMES = 'borc_takip_incomes';
+const STORAGE_ADJUST = 'borc_takip_adjustments';
 let debts = [];
 let incomes = [];
+let adjustments = []; // {id, monthKey, amount, currency, note, createdAt}
 let editingDebtId = null;
 let currentFilter = 'this-month';
+
+// Pending payment flow
+let pendingPay = null; // { debtId, installmentIndex, amount, mode: 'full'|'partial' }
+
+const CURRENCIES = [
+  { code: 'TRY', symbol: '₺', label: 'TRY ₺' },
+  { code: 'USD', symbol: '$', label: 'USD $' },
+  { code: 'EUR', symbol: '€', label: 'EUR €' },
+  { code: 'GBP', symbol: '£', label: 'GBP £' },
+  { code: 'CHF', symbol: 'Fr', label: 'CHF' },
+  { code: 'SAR', symbol: '﷼', label: 'SAR' },
+  { code: 'AED', symbol: 'د.إ', label: 'AED' }
+];
 
 const FILTER_THEMES = {
   overdue: {
@@ -48,8 +63,25 @@ function getTheme(filter) {
   return FILTER_THEMES[filter] || FILTER_THEMES['this-month'];
 }
 
-function formatMoney(amount) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }).format(amount || 0);
+function currencyMeta(code) {
+  return CURRENCIES.find(function(c) { return c.code === code; }) || CURRENCIES[0];
+}
+function formatMoney(amount, currency) {
+  currency = currency || 'TRY';
+  try {
+    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: currency, minimumFractionDigits: 2 }).format(amount || 0);
+  } catch (e) {
+    return currencyMeta(currency).symbol + ' ' + (Number(amount) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
+  }
+}
+function fillCurrencySelects() {
+  ['debt-currency', 'income-currency'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = CURRENCIES.map(function(c) {
+      return '<option value="' + c.code + '">' + c.label + '</option>';
+    }).join('');
+  });
 }
 function toLocalDateStr(d) {
   const y = d.getFullYear();
@@ -98,30 +130,51 @@ function showToast(msg) {
 }
 function escapeHtml(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/\"/g,'"');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function loadData() {
   try {
     debts = JSON.parse(localStorage.getItem(STORAGE_DEBTS) || '[]');
     incomes = JSON.parse(localStorage.getItem(STORAGE_INCOMES) || '[]');
-  } catch (e) { debts = []; incomes = []; }
+    adjustments = JSON.parse(localStorage.getItem(STORAGE_ADJUST) || '[]');
+  } catch (e) { debts = []; incomes = []; adjustments = []; }
+  debts.forEach(function(d) {
+    if (!d.currency) d.currency = 'TRY';
+    if (!d.partials) d.partials = {};
+  });
+  incomes.forEach(function(i) { if (!i.currency) i.currency = 'TRY'; });
 }
 function saveDebts() { localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts)); }
 function saveIncomes() { localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes)); }
+function saveAdjustments() { localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments)); }
+
+function installmentRemaining(debt, index) {
+  const full = debt.installmentAmount || debt.totalAmount || 0;
+  const paid = (debt.partials && Number(debt.partials[index])) || 0;
+  return Math.max(0, Math.round((full - paid) * 100) / 100);
+}
 
 function getActiveInstallments() {
   const result = [];
   debts.forEach(function(debt) {
     const paidCount = debt.paidInstallments || 0;
     const count = debt.installmentCount || 1;
-    const amount = debt.installmentAmount || debt.totalAmount || 0;
+    const currency = debt.currency || 'TRY';
     for (let i = paidCount; i < count; i++) {
+      const remaining = installmentRemaining(debt, i);
+      if (remaining <= 0) continue;
       result.push({
-        debtId: debt.id, name: debt.name, amount: amount,
+        debtId: debt.id,
+        name: debt.name,
+        amount: remaining,
+        fullAmount: debt.installmentAmount || debt.totalAmount || 0,
+        partialPaid: (debt.partials && Number(debt.partials[i])) || 0,
         dueDate: addMonths(debt.startDate, i),
         installmentLabel: (i + 1) + '/' + count,
-        installmentIndex: i, isRecurring: !!debt.recurring,
-        totalAmount: debt.totalAmount || (amount * count),
+        installmentIndex: i,
+        isRecurring: !!debt.recurring,
+        currency: currency,
+        totalAmount: debt.totalAmount || ((debt.installmentAmount || 0) * count),
         remaining: count - paidCount
       });
     }
@@ -143,66 +196,110 @@ function calcSummaries() {
   });
   return { overdue: overdue, today: today, thisMonth: thisMonth, next1: next1, next2: next2, later: later, total: total };
 }
-function getMonthlyIncome() {
-  return incomes.reduce(function(sum, i) { return sum + (Number(i.amount) || 0); }, 0);
-}
-function getThisMonthDebtTotal() {
-  return getActiveInstallments().filter(function(i) { return isSameMonth(i.dueDate); }).reduce(function(s, i) { return s + i.amount; }, 0);
-}
 
 function getFilterMonthOffset(filter) {
   if (filter === 'month-1') return 1;
   if (filter === 'month-2') return 2;
   return 0;
 }
-function getDebtTotalForOffset(offset) {
-  return getActiveInstallments().filter(function(i) {
-    if (offset === 0) return isSameMonth(i.dueDate);
-    return isMonthOffset(i.dueDate, offset);
-  }).reduce(function(s, i) { return s + i.amount; }, 0);
-}
 function balanceMonthName(filter) {
   return monthNameTR(getFilterMonthOffset(filter));
 }
+function getMonthKeyForOffset(offset) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function getEffectiveIncomeByCurrency(monthKey) {
+  const map = {};
+  incomes.forEach(function(inc) {
+    const c = inc.currency || 'TRY';
+    map[c] = (map[c] || 0) + (Number(inc.amount) || 0);
+  });
+  adjustments.forEach(function(adj) {
+    if (adj.monthKey !== monthKey) return;
+    const c = adj.currency || 'TRY';
+    map[c] = (map[c] || 0) - (Number(adj.amount) || 0);
+  });
+  return map;
+}
+function getDebtByCurrencyForOffset(offset) {
+  const map = {};
+  getActiveInstallments().forEach(function(item) {
+    let match = false;
+    if (offset === 0) match = isSameMonth(item.dueDate);
+    else match = isMonthOffset(item.dueDate, offset);
+    if (!match) return;
+    const c = item.currency || 'TRY';
+    map[c] = (map[c] || 0) + item.amount;
+  });
+  return map;
+}
 
 function renderBalance() {
-  const income = getMonthlyIncome();
   const offset = getFilterMonthOffset(currentFilter);
-  const monthDebt = getDebtTotalForOffset(offset);
-  const balance = income - monthDebt;
   const monthName = balanceMonthName(currentFilter);
+  const monthKey = getMonthKeyForOffset(offset);
+  const incomeMap = getEffectiveIncomeByCurrency(monthKey);
+  const debtMap = getDebtByCurrencyForOffset(offset);
+  const currencies = {};
+  Object.keys(incomeMap).forEach(function(c) { currencies[c] = true; });
+  Object.keys(debtMap).forEach(function(c) { currencies[c] = true; });
+  const codes = Object.keys(currencies);
   const banner = document.getElementById('balance-banner');
-  const text = document.getElementById('balance-text');
+  const lines = document.getElementById('balance-lines');
   const sub = document.getElementById('balance-sub');
   const icon = document.getElementById('balance-icon');
   const monthEl = document.getElementById('balance-month');
-  if (income === 0 && monthDebt === 0) { banner.classList.add('hidden'); return; }
+  if (codes.length === 0) { banner.classList.add('hidden'); return; }
+  let anyActivity = false;
+  codes.forEach(function(c) {
+    if ((incomeMap[c] || 0) !== 0 || (debtMap[c] || 0) !== 0) anyActivity = true;
+  });
+  if (!anyActivity) { banner.classList.add('hidden'); return; }
   banner.classList.remove('hidden');
-  text.textContent = formatMoney(Math.abs(balance));
   if (monthEl) monthEl.textContent = monthName;
-  if (balance >= 0) {
+  lines.innerHTML = '';
+  let overallPositive = true;
+  codes.sort().forEach(function(c) {
+    const inc = incomeMap[c] || 0;
+    const deb = debtMap[c] || 0;
+    if (inc === 0 && deb === 0) return;
+    const bal = inc - deb;
+    if (bal < 0) overallPositive = false;
+    const p = document.createElement('p');
+    p.className = 'text-xl font-bold mt-0.5';
+    p.textContent = formatMoney(Math.abs(bal), c) + (bal >= 0 ? ' artı' : ' eksi');
+    lines.appendChild(p);
+  });
+  if (overallPositive) {
     banner.className = 'mt-4 rounded-2xl p-4 text-white fade-in bg-gradient-to-r from-emerald-500 to-green-600';
-    sub.textContent = 'Artıdasınız • Gelir: ' + formatMoney(income) + ' | ' + monthName + ' borç: ' + formatMoney(monthDebt);
     icon.innerHTML = '<i class="fas fa-arrow-up"></i>';
   } else {
     banner.className = 'mt-4 rounded-2xl p-4 text-white fade-in bg-gradient-to-r from-rose-500 to-red-600';
-    sub.textContent = 'Eksidesiniz • Gelir: ' + formatMoney(income) + ' | ' + monthName + ' borç: ' + formatMoney(monthDebt);
     icon.innerHTML = '<i class="fas fa-arrow-down"></i>';
   }
+  const parts = codes.map(function(c) {
+    const inc = incomeMap[c] || 0;
+    const deb = debtMap[c] || 0;
+    if (inc === 0 && deb === 0) return null;
+    return formatMoney(inc, c) + ' gelir / ' + formatMoney(deb, c) + ' borç';
+  }).filter(Boolean);
+  sub.textContent = monthName + ': ' + parts.join(' · ');
 }
 
 function renderSummaries() {
   const s = calcSummaries();
-  document.getElementById('sum-overdue').textContent = formatMoney(s.overdue);
-  document.getElementById('sum-today').textContent = formatMoney(s.today);
-  document.getElementById('sum-this-month').textContent = formatMoney(s.thisMonth + s.today);
+  document.getElementById('sum-overdue').textContent = formatMoney(s.overdue, 'TRY');
+  document.getElementById('sum-today').textContent = formatMoney(s.today, 'TRY');
+  document.getElementById('sum-this-month').textContent = formatMoney(s.thisMonth + s.today, 'TRY');
   const cards = document.querySelectorAll('#summary-grid > div');
   if (cards.length >= 6) {
     const filters = ['overdue', 'today', 'this-month', 'month-1', 'month-2', 'all'];
     cards[3].querySelector('p:first-child').textContent = monthNameTR(1);
-    cards[3].querySelector('p:last-child').textContent = formatMoney(s.next1);
+    cards[3].querySelector('p:last-child').textContent = formatMoney(s.next1, 'TRY');
     cards[4].querySelector('p:first-child').textContent = monthNameTR(2);
-    cards[4].querySelector('p:last-child').textContent = formatMoney(s.next2 + s.later);
+    cards[4].querySelector('p:last-child').textContent = formatMoney(s.next2 + s.later, 'TRY');
     for (let i = 0; i < 6; i++) {
       cards[i].setAttribute('data-filter', filters[i]);
       cards[i].style.cursor = 'pointer';
@@ -210,7 +307,7 @@ function renderSummaries() {
       cards[i].className = (filters[i] === currentFilter) ? th.cardActive : th.card;
     }
   }
-  document.getElementById('sum-total').textContent = formatMoney(s.total);
+  document.getElementById('sum-total').textContent = formatMoney(s.total, 'TRY');
 }
 
 function renderIncomes() {
@@ -220,9 +317,10 @@ function renderIncomes() {
   if (incomes.length === 0) { empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
   incomes.forEach(function(inc) {
+    const cur = inc.currency || 'TRY';
     const el = document.createElement('div');
     el.className = 'bg-white rounded-xl p-3.5 card-shadow flex items-center justify-between fade-in';
-    el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">Aylık</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
+    el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">Aylık · ' + cur + '</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount, cur) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
     list.appendChild(el);
   });
 }
@@ -247,9 +345,31 @@ function renderDebts() {
   items.forEach(function(item) {
     const isLate = isOverdue(item.dueDate);
     const isTod = isToday(item.dueDate);
+    const cur = item.currency || 'TRY';
+    const partialNote = item.partialPaid > 0
+      ? '<p class="text-xs text-gray-500 mt-0.5">Kalan · ödenen ' + formatMoney(item.partialPaid, cur) + '</p>'
+      : '';
     const el = document.createElement('div');
     el.className = getTheme(filter).debt;
-    el.innerHTML = '<div class="flex justify-between items-start"><div class="flex-1 min-w-0"><p class="text-xs text-gray-500 mb-0.5">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900 truncate">' + escapeHtml(item.name) + '</p><p class="text-xs font-medium text-blue-600 mt-1">(' + item.installmentLabel + ')</p></div><div class="text-right ml-3"><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount) + '</p>' + (isLate ? '<span class="text-xs text-red-500 font-medium">Gecikmiş</span>' : isTod ? '<span class="text-xs text-orange-500 font-medium">Bugün</span>' : '') + '</div></div><div class="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100"><button onclick="confirmMarkPaid(\'' + item.debtId + '\')" class="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-check-circle"></i> Ödendi</button><button onclick="editDebt(\'' + item.debtId + '\')" class="text-blue-600 hover:text-blue-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-pen"></i> Düzenle</button><button onclick="deleteDebt(\'' + item.debtId + '\')" class="text-red-500 hover:text-red-600 flex items-center gap-1.5 text-sm font-medium ml-auto"><i class="fas fa-times"></i></button></div>';
+    el.innerHTML =
+      '<div class="flex justify-between items-start">' +
+        '<div class="flex-1 min-w-0">' +
+          '<p class="text-xs text-gray-500 mb-0.5">' + formatDateTR(item.dueDate) + '</p>' +
+          '<p class="font-semibold text-gray-900 truncate">' + escapeHtml(item.name) + '</p>' +
+          '<p class="text-xs font-medium text-blue-600 mt-1">(' + item.installmentLabel + ') · ' + cur + '</p>' +
+          partialNote +
+        '</div>' +
+        '<div class="text-right ml-3">' +
+          '<p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount, cur) + '</p>' +
+          (isLate ? '<span class="text-xs text-red-500 font-medium">Gecikmiş</span>' : isTod ? '<span class="text-xs text-orange-500 font-medium">Bugün</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 flex-wrap">' +
+        '<button onclick="startFullPay(\'' + item.debtId + '\',' + item.installmentIndex + ')" class="text-green-600 hover:text-green-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-check-circle"></i> Ödendi</button>' +
+        '<button onclick="startPartialPay(\'' + item.debtId + '\',' + item.installmentIndex + ')" class="text-amber-600 hover:text-amber-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-coins"></i> Kısmi Öde</button>' +
+        '<button onclick="editDebt(\'' + item.debtId + '\')" class="text-blue-600 hover:text-blue-700 flex items-center gap-1.5 text-sm font-medium"><i class="fas fa-pen"></i> Düzenle</button>' +
+        '<button onclick="deleteDebt(\'' + item.debtId + '\')" class="text-red-500 hover:text-red-600 flex items-center gap-1.5 text-sm font-medium ml-auto"><i class="fas fa-times"></i></button>' +
+      '</div>';
     list.appendChild(el);
   });
 }
@@ -276,6 +396,89 @@ function renderAll() {
   renderSummaries();
   renderIncomes();
   renderDebts();
+}
+
+// ---- Payment flow ----
+function startFullPay(debtId, installmentIndex) {
+  const debt = debts.find(function(d) { return d.id === debtId; });
+  if (!debt) return;
+  const remaining = installmentRemaining(debt, installmentIndex);
+  if (remaining <= 0) return;
+  pendingPay = { debtId: debtId, installmentIndex: installmentIndex, amount: remaining, mode: 'full' };
+  document.getElementById('pay-source-info').textContent =
+    debt.name + ' · ' + formatMoney(remaining, debt.currency || 'TRY') + ' tamamen ödenecek';
+  document.getElementById('modal-pay-source').classList.remove('hidden');
+}
+function startPartialPay(debtId, installmentIndex) {
+  const debt = debts.find(function(d) { return d.id === debtId; });
+  if (!debt) return;
+  const remaining = installmentRemaining(debt, installmentIndex);
+  if (remaining <= 0) return;
+  pendingPay = { debtId: debtId, installmentIndex: installmentIndex, amount: remaining, mode: 'partial' };
+  document.getElementById('partial-info').textContent =
+    debt.name + ' · kalan ' + formatMoney(remaining, debt.currency || 'TRY');
+  document.getElementById('partial-amount').value = '';
+  document.getElementById('partial-amount').max = remaining;
+  document.getElementById('modal-partial').classList.remove('hidden');
+}
+function closePartialModal() {
+  document.getElementById('modal-partial').classList.add('hidden');
+}
+function submitPartialAmount() {
+  if (!pendingPay) return;
+  const debt = debts.find(function(d) { return d.id === pendingPay.debtId; });
+  if (!debt) return;
+  const remaining = installmentRemaining(debt, pendingPay.installmentIndex);
+  let amt = parseFloat(document.getElementById('partial-amount').value);
+  if (!amt || amt <= 0) { showToast('Geçerli tutar girin'); return; }
+  if (amt > remaining) amt = remaining;
+  pendingPay.amount = Math.round(amt * 100) / 100;
+  closePartialModal();
+  document.getElementById('pay-source-info').textContent =
+    debt.name + ' · ' + formatMoney(pendingPay.amount, debt.currency || 'TRY') + ' kısmi ödeme';
+  document.getElementById('modal-pay-source').classList.remove('hidden');
+}
+function closePaySourceModal() {
+  document.getElementById('modal-pay-source').classList.add('hidden');
+  pendingPay = null;
+}
+function confirmPaySource(source) {
+  if (!pendingPay) return;
+  const debt = debts.find(function(d) { return d.id === pendingPay.debtId; });
+  if (!debt) { closePaySourceModal(); return; }
+  const idx = pendingPay.installmentIndex;
+  const amount = pendingPay.amount;
+  const currency = debt.currency || 'TRY';
+  const dueDate = addMonths(debt.startDate, idx);
+
+  if (!debt.partials) debt.partials = {};
+  debt.partials[idx] = Math.round(((Number(debt.partials[idx]) || 0) + amount) * 100) / 100;
+
+  while ((debt.paidInstallments || 0) < (debt.installmentCount || 1) &&
+         installmentRemaining(debt, debt.paidInstallments || 0) <= 0) {
+    debt.paidInstallments = (debt.paidInstallments || 0) + 1;
+  }
+
+  if (source === 'salary') {
+    const monthKey = dueDate.slice(0, 7);
+    adjustments.push({
+      id: uid(),
+      monthKey: monthKey,
+      amount: amount,
+      currency: currency,
+      note: debt.name,
+      createdAt: new Date().toISOString()
+    });
+    saveAdjustments();
+    showToast('Ödendi (maaştan) · durum aynı kaldı');
+  } else {
+    showToast('Ödendi (ekstra) · durum iyileşti');
+  }
+
+  saveDebts();
+  closePaySourceModal();
+  renderAll();
+  scheduleDueNotifications();
 }
 
 function openNamePicker() {
@@ -310,11 +513,13 @@ function openDebtModal(editId) {
   const title = document.getElementById('debt-modal-title');
   const form = document.getElementById('form-debt');
   form.reset();
+  fillCurrencySelects();
   document.getElementById('debt-id').value = '';
   document.getElementById('debt-installments').value = 2;
   document.getElementById('installment-fields').classList.add('hidden');
   document.getElementById('installment-preview').classList.add('hidden');
   document.getElementById('debt-recurring').checked = false;
+  document.getElementById('debt-currency').value = 'TRY';
   if (editId) {
     const debt = debts.find(function(d) { return d.id === editId; });
     if (!debt) return;
@@ -324,6 +529,7 @@ function openDebtModal(editId) {
     document.getElementById('debt-total').value = debt.installmentAmount || debt.totalAmount;
     document.getElementById('debt-due').value = debt.startDate;
     document.getElementById('debt-installments').value = debt.installmentCount || 1;
+    document.getElementById('debt-currency').value = debt.currency || 'TRY';
     const isMulti = (debt.installmentCount || 1) > 1;
     document.getElementById('debt-recurring').checked = isMulti;
     if (isMulti) {
@@ -347,11 +553,12 @@ function closeDebtModal() {
 function updateInstallmentPreview() {
   const amount = parseFloat(document.getElementById('debt-total').value) || 0;
   const count = parseInt(document.getElementById('debt-installments').value) || 1;
+  const cur = document.getElementById('debt-currency').value || 'TRY';
   const preview = document.getElementById('installment-preview');
   const info = document.getElementById('installment-info');
   if (count > 1 && amount > 0) {
     const total = Math.round(amount * count * 100) / 100;
-    info.textContent = count + ' taksit × ' + formatMoney(amount) + ' = ' + formatMoney(total) + ' toplam';
+    info.textContent = count + ' taksit × ' + formatMoney(amount, cur) + ' = ' + formatMoney(total, cur) + ' toplam';
     preview.classList.remove('hidden');
   } else preview.classList.add('hidden');
 }
@@ -361,6 +568,7 @@ function saveDebt(e) {
   const name = document.getElementById('debt-name').value.trim();
   const installmentAmount = parseFloat(document.getElementById('debt-total').value);
   const startDate = document.getElementById('debt-due').value;
+  const currency = document.getElementById('debt-currency').value || 'TRY';
   const isMulti = document.getElementById('debt-recurring').checked;
   let installmentCount = 1;
   if (isMulti) {
@@ -371,33 +579,24 @@ function saveDebt(e) {
   const totalAmount = Math.round(installmentAmount * installmentCount * 100) / 100;
   const existingIdx = debts.findIndex(function(d) { return d.id === id; });
   let paidInstallments = 0;
+  let partials = {};
   if (existingIdx >= 0) {
     const old = debts[existingIdx];
-    if (old.startDate === startDate && old.installmentCount === installmentCount && old.installmentAmount === installmentAmount)
+    if (old.startDate === startDate && old.installmentCount === installmentCount && old.installmentAmount === installmentAmount) {
       paidInstallments = old.paidInstallments || 0;
+      partials = old.partials || {};
+    }
   }
   const debtObj = {
     id: id, name: name, category: '', totalAmount: totalAmount,
     installmentCount: installmentCount, installmentAmount: installmentAmount,
     startDate: startDate, note: '', recurring: isMulti,
-    paidInstallments: paidInstallments,
+    paidInstallments: paidInstallments, partials: partials, currency: currency,
     createdAt: existingIdx >= 0 ? debts[existingIdx].createdAt : new Date().toISOString()
   };
   if (existingIdx >= 0) { debts[existingIdx] = debtObj; showToast('Borç güncellendi'); }
   else { debts.push(debtObj); showToast('Borç eklendi'); }
-  saveDebts(); closeDebtModal(); renderAll();
-}
-function confirmMarkPaid(debtId) {
-  if (!confirm('Bu taksiti ödendi olarak işaretlemek istiyor musunuz?')) return;
-  markPaid(debtId);
-}
-function markPaid(debtId) {
-  const debt = debts.find(function(d) { return d.id === debtId; });
-  if (!debt) return;
-  debt.paidInstallments = (debt.paidInstallments || 0) + 1;
-  if (debt.paidInstallments >= debt.installmentCount) showToast('Borç tamamen ödendi');
-  else showToast('Taksit ödendi (' + debt.paidInstallments + '/' + debt.installmentCount + ')');
-  saveDebts(); renderAll();
+  saveDebts(); closeDebtModal(); renderAll(); scheduleDueNotifications();
 }
 function editDebt(debtId) { openDebtModal(debtId); }
 function deleteDebt(debtId) {
@@ -407,7 +606,9 @@ function deleteDebt(debtId) {
 }
 
 function openIncomeModal() {
+  fillCurrencySelects();
   document.getElementById('form-income').reset();
+  document.getElementById('income-currency').value = 'TRY';
   document.getElementById('modal-income').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
 }
@@ -419,8 +620,9 @@ function saveIncome(e) {
   e.preventDefault();
   const name = document.getElementById('income-name').value.trim();
   const amount = parseFloat(document.getElementById('income-amount').value);
+  const currency = document.getElementById('income-currency').value || 'TRY';
   if (!name || !amount) return;
-  incomes.push({ id: uid(), name: name, amount: amount, createdAt: new Date().toISOString() });
+  incomes.push({ id: uid(), name: name, amount: amount, currency: currency, createdAt: new Date().toISOString() });
   saveIncomes(); closeIncomeModal(); showToast('Gelir eklendi'); renderAll();
 }
 function deleteIncome(id) {
@@ -433,7 +635,7 @@ function openSettings() { document.getElementById('modal-settings').classList.re
 function closeSettings() { document.getElementById('modal-settings').classList.add('hidden'); }
 
 function exportData() {
-  const data = { debts: debts, incomes: incomes, exportedAt: new Date().toISOString() };
+  const data = { debts: debts, incomes: incomes, adjustments: adjustments, exportedAt: new Date().toISOString() };
   const json = JSON.stringify(data, null, 2);
   const filename = 'borc-takip-' + todayStr() + '.json';
   closeSettings();
@@ -446,13 +648,7 @@ async function saveBackupFile(json, filename) {
     const SharePlugin = window.Capacitor.Plugins.Share;
     try {
       if (FS && FS.writeFile) {
-        await FS.writeFile({
-          path: filename,
-          data: json,
-          directory: 'DOCUMENTS',
-          encoding: 'utf8',
-          recursive: true
-        });
+        await FS.writeFile({ path: filename, data: json, directory: 'DOCUMENTS', encoding: 'utf8', recursive: true });
         let uri = null;
         try {
           const uriResult = await FS.getUri({ path: filename, directory: 'DOCUMENTS' });
@@ -461,8 +657,7 @@ async function saveBackupFile(json, filename) {
         if (SharePlugin && SharePlugin.share) {
           try {
             const shareOpts = { title: 'Borç Takip Yedek', dialogTitle: 'Yedeği kaydet veya paylaş' };
-            if (uri) shareOpts.url = uri;
-            else shareOpts.text = json;
+            if (uri) shareOpts.url = uri; else shareOpts.text = json;
             await SharePlugin.share(shareOpts);
             showToast('Kaydedildi: ' + filename);
             return;
@@ -475,7 +670,6 @@ async function saveBackupFile(json, filename) {
         return;
       }
     } catch (err) {
-      console.error(err);
       showToast('Kayıt hatası, panoya kopyalanıyor...');
       copyTextFallback(json);
       return;
@@ -494,7 +688,8 @@ async function saveBackupFile(json, filename) {
 
 function copyTextFallback(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(function() { showToast('JSON panoya kopyalandı'); }).catch(function() { showToast('Dışa aktarma başarısız'); });
+    navigator.clipboard.writeText(text).then(function() { showToast('JSON panoya kopyalandı'); })
+      .catch(function() { showToast('Dışa aktarma başarısız'); });
   } else showToast('Dışa aktarma desteklenmiyor');
 }
 
@@ -506,7 +701,8 @@ function importData(e) {
       const data = JSON.parse(ev.target.result);
       if (data.debts) debts = data.debts;
       if (data.incomes) incomes = data.incomes;
-      saveDebts(); saveIncomes(); renderAll();
+      if (data.adjustments) adjustments = data.adjustments;
+      saveDebts(); saveIncomes(); saveAdjustments(); renderAll();
       showToast('Veriler yüklendi'); closeSettings();
     } catch (err) { showToast('Geçersiz dosya'); }
   };
@@ -514,7 +710,8 @@ function importData(e) {
 }
 function clearAllData() {
   if (!confirm('TÜM borç ve gelir verileri silinecek. Emin misiniz?')) return;
-  debts = []; incomes = []; saveDebts(); saveIncomes(); renderAll();
+  debts = []; incomes = []; adjustments = [];
+  saveDebts(); saveIncomes(); saveAdjustments(); renderAll();
   showToast('Tüm veriler silindi'); closeSettings();
 }
 
@@ -548,7 +745,7 @@ function openMonthsModal() {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'w-full flex items-center justify-between px-4 py-3.5 rounded-xl bg-gray-50 hover:bg-blue-50 border border-gray-100 text-left';
-      btn.innerHTML = '<div><p class="font-semibold text-gray-900">' + monthTitleFromKey(key) + '</p><p class="text-xs text-gray-500">' + m.count + ' borç</p></div><span class="font-bold text-gray-800">' + formatMoney(m.total) + '</span>';
+      btn.innerHTML = '<div><p class="font-semibold text-gray-900">' + monthTitleFromKey(key) + '</p><p class="text-xs text-gray-500">' + m.count + ' borç</p></div><span class="font-bold text-gray-800">' + formatMoney(m.total, 'TRY') + '</span>';
       btn.onclick = function() { openMonthDebtsModal(key); };
       list.appendChild(btn);
     });
@@ -580,10 +777,10 @@ function openMonthDebtsModal(monthKey) {
       const isLate = isOverdue(item.dueDate);
       const el = document.createElement('div');
       el.className = 'bg-gray-50 rounded-xl p-4';
-      el.innerHTML = '<div class="flex justify-between items-start"><div><p class="text-xs text-gray-500">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900">' + escapeHtml(item.name) + '</p><p class="text-xs text-blue-600 mt-0.5">(' + item.installmentLabel + ')</p></div><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount) + '</p></div>';
+      el.innerHTML = '<div class="flex justify-between items-start"><div><p class="text-xs text-gray-500">' + formatDateTR(item.dueDate) + '</p><p class="font-semibold text-gray-900">' + escapeHtml(item.name) + '</p><p class="text-xs text-blue-600 mt-0.5">(' + item.installmentLabel + ') · ' + (item.currency || 'TRY') + '</p></div><p class="font-bold ' + (isLate ? 'text-red-600' : 'text-gray-900') + '">' + formatMoney(item.amount, item.currency || 'TRY') + '</p></div>';
       list.appendChild(el);
     });
-    totalEl.textContent = 'Toplam: ' + formatMoney(total);
+    totalEl.textContent = 'Toplam: ' + formatMoney(total, 'TRY');
   }
   document.getElementById('modal-month-debts').classList.remove('hidden');
 }
@@ -592,11 +789,70 @@ function closeMonthDebtsModal() {
   if (el) el.classList.add('hidden');
 }
 
+// ---- Notifications (due today only) ----
+async function requestNotifPermission() {
+  closeSettings();
+  try {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+      const LN = window.Capacitor.Plugins.LocalNotifications;
+      const perm = await LN.requestPermissions();
+      if (perm && (perm.display === 'granted' || perm.receive === 'granted')) {
+        showToast('Bildirim izni verildi');
+        await scheduleDueNotifications();
+      } else {
+        showToast('Bildirim izni gerekli');
+      }
+    } else if ('Notification' in window) {
+      const p = await Notification.requestPermission();
+      showToast(p === 'granted' ? 'Bildirim izni verildi' : 'Bildirim izni reddedildi');
+      scheduleDueNotifications();
+    } else {
+      showToast('Bildirim bu cihazda desteklenmiyor');
+    }
+  } catch (e) {
+    showToast('Bildirim hatası');
+  }
+}
+
+async function scheduleDueNotifications() {
+  const todayItems = getActiveInstallments().filter(function(i) { return isToday(i.dueDate); });
+  if (todayItems.length === 0) return;
+
+  const title = 'Bugün ödenecek borç';
+  const body = todayItems.length === 1
+    ? (todayItems[0].name + ' · ' + formatMoney(todayItems[0].amount, todayItems[0].currency))
+    : (todayItems.length + ' borcun vadesi bugün');
+
+  try {
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+      const LN = window.Capacitor.Plugins.LocalNotifications;
+      await LN.cancel({ notifications: [{ id: 1001 }] }).catch(function() {});
+      await LN.schedule({
+        notifications: [{
+          id: 1001,
+          title: title,
+          body: body,
+          schedule: { at: new Date(Date.now() + 2000) },
+          sound: undefined,
+          smallIcon: 'ic_stat_icon_default',
+          channelId: 'borc_due'
+        }]
+      });
+    } else if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body: body });
+    }
+  } catch (e) {
+    console.warn('notif', e);
+  }
+}
+
 function isModalOpen(id) {
   const el = document.getElementById(id);
   return el && !el.classList.contains('hidden');
 }
 function handleBackButton() {
+  if (isModalOpen('modal-pay-source')) { closePaySourceModal(); return; }
+  if (isModalOpen('modal-partial')) { closePartialModal(); return; }
   if (isModalOpen('modal-month-debts')) { closeMonthDebtsModal(); return; }
   if (isModalOpen('modal-months')) { closeMonthsModal(); return; }
   if (isModalOpen('modal-name-picker')) { closeNamePicker(); return; }
@@ -610,8 +866,21 @@ function setupBackButton() {
     window.Capacitor.Plugins.App.addListener('backButton', handleBackButton);
 }
 
+function hideSplash() {
+  const s = document.getElementById('splash');
+  if (!s) return;
+  s.classList.add('fade-out');
+  setTimeout(function() { s.style.display = 'none'; }, 450);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-  loadData(); renderAll(); setupBackButton();
+  fillCurrencySelects();
+  loadData();
+  renderAll();
+  setupBackButton();
+  setTimeout(hideSplash, 1000);
+  setTimeout(scheduleDueNotifications, 1500);
+
   document.getElementById('btn-add-debt').addEventListener('click', function() { openDebtModal(); });
   document.getElementById('btn-add-income').addEventListener('click', openIncomeModal);
   document.getElementById('btn-settings').addEventListener('click', openSettings);
@@ -619,6 +888,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('form-income').addEventListener('submit', saveIncome);
   document.getElementById('debt-total').addEventListener('input', updateInstallmentPreview);
   document.getElementById('debt-installments').addEventListener('input', updateInstallmentPreview);
+  document.getElementById('debt-currency').addEventListener('change', updateInstallmentPreview);
   document.getElementById('debt-recurring').addEventListener('change', function(e) {
     const fields = document.getElementById('installment-fields');
     if (e.target.checked) {
