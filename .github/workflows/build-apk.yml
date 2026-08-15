@@ -37,6 +37,13 @@ jobs:
           mkdir -p www
           cp index.html www/
           cp app.js www/
+          if [ -f resources/icon.png ]; then
+            cp resources/icon.png www/logo.png
+            cp resources/icon.png www/icon.png
+          fi
+          if [ -f logo.png ]; then
+            cp logo.png www/logo.png
+          fi
           ls -la www/
 
       - name: Install npm dependencies
@@ -47,12 +54,15 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      - name: Add storage permissions to AndroidManifest
+      - name: Add Android permissions (storage + notifications)
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST" ]; then
             if ! grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
               sed -i '/<application/i\    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />' "$MANIFEST"
+            fi
+            if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
+              sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.VIBRATE" />' "$MANIFEST"
             fi
             echo "=== Permissions ==="
             grep -E "uses-permission" "$MANIFEST" || true
@@ -71,7 +81,6 @@ jobs:
               raise SystemExit("resources/icon.png bulunamadı")
 
           img = Image.open(src).convert("RGBA")
-          # Kare kırp / pad
           w, h = img.size
           side = max(w, h)
           canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
@@ -84,7 +93,6 @@ jobs:
               "mipmap-xxhdpi": 144,
               "mipmap-xxxhdpi": 192,
           }
-          # Adaptive foreground biraz daha büyük
           fg_sizes = {
               "mipmap-mdpi": 108,
               "mipmap-hdpi": 162,
@@ -94,12 +102,6 @@ jobs:
           }
 
           res = Path("android/app/src/main/res")
-          names = [
-              "ic_launcher.png",
-              "ic_launcher_round.png",
-              "ic_launcher_foreground.png",
-          ]
-
           for folder, size in sizes.items():
               out_dir = res / folder
               out_dir.mkdir(parents=True, exist_ok=True)
@@ -111,8 +113,6 @@ jobs:
           for folder, size in fg_sizes.items():
               out_dir = res / folder
               out_dir.mkdir(parents=True, exist_ok=True)
-              fg = canvas.resize((size, size), Image.Resampling.LANCZOS)
-              # Safe zone: içeri al (adaptive icon)
               pad = Image.new("RGBA", (size, size), (0, 0, 0, 0))
               inner = int(size * 0.66)
               small = canvas.resize((inner, inner), Image.Resampling.LANCZOS)
@@ -121,7 +121,6 @@ jobs:
               pad.save(out_dir / "ic_launcher_foreground.png", "PNG")
               print("wrote", out_dir / "ic_launcher_foreground.png")
 
-          # Background rengi (adaptive)
           anydpi = res / "mipmap-anydpi-v26"
           anydpi.mkdir(parents=True, exist_ok=True)
           for xml_name in ("ic_launcher.xml", "ic_launcher_round.xml"):
@@ -131,23 +130,16 @@ jobs:
               <background android:drawable="@color/ic_launcher_background"/>
               <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
           </adaptive-icon>
-          '''.strip()
-                  + "\n",
-                  encoding="utf-8",
-              )
+          '''.strip() + "\n", encoding="utf-8")
 
           values = res / "values"
           values.mkdir(parents=True, exist_ok=True)
-          colors = values / "ic_launcher_background.xml"
-          colors.write_text(
+          (values / "ic_launcher_background.xml").write_text(
               '''<?xml version="1.0" encoding="utf-8"?>
           <resources>
-              <color name="ic_launcher_background">#0F172A</color>
+              <color name="ic_launcher_background">#0B1B3A</color>
           </resources>
-          '''.strip()
-              + "\n",
-              encoding="utf-8",
-          )
+          '''.strip() + "\n", encoding="utf-8")
           print("Icon generation OK")
           PY
 
