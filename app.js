@@ -130,7 +130,11 @@ function showToast(msg) {
 }
 function escapeHtml(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+  return String(str)
+    .replace(/&/g, '\x26amp;')
+    .replace(/</g, '\x26lt;')
+    .replace(/>/g, '\x26gt;')
+    .replace(/"/g, '\x26quot;');
 }
 function loadData() {
   try {
