@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    /* İlk boyamada beyaz flaş olmasın */
     html, body {
       margin: 0;
       background: #071428 !important;
@@ -44,7 +43,6 @@
     #app-root.visible { opacity: 1; }
   </style>
   <style>
-    /* Tailwind yüklenmeden önce splash görünür kalsın */
     #splash img { width: 9rem; height: 9rem; border-radius: 1.5rem; object-fit: cover; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
     #splash .splash-title { margin-top: 1.25rem; color: #fff; font-size: 1.5rem; font-weight: 700; letter-spacing: 0.05em; }
     #splash .splash-sub { margin-top: 0.25rem; color: rgba(191,219,254,0.8); font-size: 0.875rem; }
@@ -85,27 +83,39 @@
     <section class="mt-5">
       <h2 class="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Borç Özetiniz</h2>
       <div id="summary-grid" class="grid grid-cols-3 gap-2.5">
-        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+        <div data-filter="overdue" class="bg-white rounded-xl p-3 card-shadow text-center">
           <p class="text-xs text-gray-500 mb-1">Gecikmiş</p>
           <p id="sum-overdue" class="text-sm font-bold text-red-600">₺0,00</p>
         </div>
-        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+        <div data-filter="today" class="bg-white rounded-xl p-3 card-shadow text-center">
           <p class="text-xs text-gray-500 mb-1">Bugün</p>
           <p id="sum-today" class="text-sm font-bold text-orange-600">₺0,00</p>
         </div>
-        <div class="bg-sky-50 rounded-xl p-3 card-shadow text-center border-2 border-sky-400">
-          <p class="text-xs text-sky-600 mb-1 font-medium">Bu ay</p>
+        <div data-filter="this-month" class="bg-sky-50 rounded-xl p-3 card-shadow text-center border-2 border-sky-400">
+          <p id="lbl-this-month" class="text-xs text-sky-600 mb-1 font-medium">Bu ay</p>
           <p id="sum-this-month" class="text-sm font-bold text-sky-700">₺0,00</p>
         </div>
-        <div class="bg-white rounded-xl p-3 card-shadow text-center">
-          <p class="text-xs text-gray-500 mb-1">Gelecek</p>
-          <p id="sum-next-month" class="text-sm font-bold text-gray-800">₺0,00</p>
+        <div data-filter="month-1" class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p id="lbl-month-1" class="text-xs text-gray-500 mb-1">—</p>
+          <p id="sum-month-1" class="text-sm font-bold text-gray-800">₺0,00</p>
         </div>
-        <div class="bg-white rounded-xl p-3 card-shadow text-center">
-          <p class="text-xs text-gray-500 mb-1">Sonraki</p>
-          <p id="sum-later" class="text-sm font-bold text-gray-800">₺0,00</p>
+        <div data-filter="month-2" class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p id="lbl-month-2" class="text-xs text-gray-500 mb-1">—</p>
+          <p id="sum-month-2" class="text-sm font-bold text-gray-800">₺0,00</p>
         </div>
-        <div class="bg-white rounded-xl p-3 card-shadow text-center">
+        <div data-filter="month-3" class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p id="lbl-month-3" class="text-xs text-gray-500 mb-1">—</p>
+          <p id="sum-month-3" class="text-sm font-bold text-gray-800">₺0,00</p>
+        </div>
+        <div data-filter="month-4" class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p id="lbl-month-4" class="text-xs text-gray-500 mb-1">—</p>
+          <p id="sum-month-4" class="text-sm font-bold text-gray-800">₺0,00</p>
+        </div>
+        <div data-filter="month-5" class="bg-white rounded-xl p-3 card-shadow text-center">
+          <p id="lbl-month-5" class="text-xs text-gray-500 mb-1">—</p>
+          <p id="sum-month-5" class="text-sm font-bold text-gray-800">₺0,00</p>
+        </div>
+        <div data-filter="all" class="bg-white rounded-xl p-3 card-shadow text-center">
           <p class="text-xs text-gray-500 mb-1">Genel</p>
           <p id="sum-total" class="text-sm font-bold text-gray-900">₺0,00</p>
         </div>
@@ -323,7 +333,7 @@
     </div>
   </div>
 
-  </div><!-- /app-root -->
+  </div>
 
   <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-2.5 rounded-full text-sm font-medium shadow-lg z-[60] opacity-0 pointer-events-none transition-opacity duration-300"></div>
   <script>
