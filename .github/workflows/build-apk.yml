@@ -36,7 +36,80 @@ jobs:
         run: |
           mkdir -p www
           cp index.html www/
-          cp app.js www/
+          curl -fsSL "https://raw.githubusercontent.com/ahmetbayrak19-afk/borc-takip/9b2dfb8b89d88793ed72c53606fa6438ca97bdd1/app.js" -o www/app.js
+          test -s www/app.js
+          grep -q "function hideSplash" www/app.js
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("www/app.js")
+          c = p.read_text(encoding="utf-8")
+          old = """function monthNameTR(offset) {
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset);
+  return months[d.getMonth()];
+}
+function todayStr() { return toLocalDateStr(new Date()); }
+function addMonths(dateStr, months) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setMonth(d.getMonth() + months);
+  return toLocalDateStr(d);
+}
+function isSameMonth(dateStr, ref) {
+  if (!ref) ref = new Date();
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+}
+function isMonthOffset(dateStr, offset) {
+  const ref = new Date();
+  ref.setMonth(ref.getMonth() + offset);
+  return isSameMonth(dateStr, ref);
+}"""
+          neu = """function shiftMonth(date, months) {
+  const d = new Date(date.getTime());
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, last));
+  return d;
+}
+function monthKeyFromOffset(offset) {
+  const d = shiftMonth(new Date(), offset);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function monthNameTR(offset) {
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const d = shiftMonth(new Date(), offset);
+  return months[d.getMonth()];
+}
+function todayStr() { return toLocalDateStr(new Date()); }
+function addMonths(dateStr, months) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return toLocalDateStr(shiftMonth(d, months));
+}
+function isSameMonth(dateStr, ref) {
+  if (!ref) ref = new Date();
+  const key = ref.getFullYear() + '-' + String(ref.getMonth() + 1).padStart(2, '0');
+  return String(dateStr).substring(0, 7) === key;
+}
+function isMonthOffset(dateStr, offset) {
+  return String(dateStr).substring(0, 7) === monthKeyFromOffset(offset);
+}"""
+          if old not in c:
+              raise SystemExit("month block not found in restored app.js")
+          c = c.replace(old, neu, 1)
+          c = c.replace("""function getMonthKeyForOffset(offset) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offset);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}""", """function getMonthKeyForOffset(offset) {
+  return monthKeyFromOffset(offset);
+}""", 1)
+          c = c.replace("    const d = new Date();\n    d.setMonth(d.getMonth() + i);", "    const d = shiftMonth(new Date(), i);", 1)
+          p.write_text(c, encoding="utf-8")
+          print("patched app.js bytes", p.stat().st_size)
+          PY
           if [ -f resources/icon.png ]; then
             cp resources/icon.png www/logo.png
             cp resources/icon.png www/icon.png
@@ -44,6 +117,7 @@ jobs:
           if [ -f logo.png ]; then
             cp logo.png www/logo.png
           fi
+          wc -c www/app.js
           ls -la www/
 
       - name: Install npm dependencies
