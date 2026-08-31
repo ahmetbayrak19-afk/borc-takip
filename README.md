@@ -4,7 +4,7 @@ Modern, mobil uyumlu bir **borç ve gelir takip uygulaması**.
 
 Taksitli borçlarınızı yönetin, maaş/gelir bilgilerinizi girin ve **aylık olarak artıda mı yoksa ekside mi** olduğunuzu anında görün.
 
-![Demo](https://img.shields.io/badge/Status-Haz%C4%B1r-brightgreen) ![Vanilla JS](https://img.shields.io/badge/Stack-HTML%20%2B%20Tailwind%20%2B%20JS-blue) ![APK](https://img.shields.io/badge/Android-APK-green)
+![Demo](https://img.shields.io/badge/Status-Hazır-brightgreen) ![Vanilla JS](https://img.shields.io/badge/Stack-HTML%20%2B%20Tailwind%20%2B%20JS-blue)
 
 ## ✨ Özellikler
 
@@ -34,62 +34,60 @@ Taksitli borçlarınızı yönetin, maaş/gelir bilgilerinizi girin ve **aylık 
 | Genel | Toplam kalan borç |
 
 ### Diğer
-- 📱 Mobil öncelikli tasarım
-- 💾 Tüm veriler cihazında saklanır (localStorage)
-- 📤 JSON dışa/içe aktarma
+- 📱 Mobil öncelikli tasarım (telefon ekranına uyumlu)
+- 💾 Tüm veriler tarayıcıda `localStorage`'da saklanır (sunucu yok)
+- 📤 JSON dışa/içe aktarma (yedekleme)
 - 🗑️ Tek tıkla tüm verileri temizleme
 
-## 📥 Android APK İndirme
-
-Her `main` branch push'unda otomatik olarak **Debug APK** oluşturulur.
-
-### Nasıl indirilir?
-
-1. Repo'ya git: [https://github.com/ahmetbayrak19-afk/borc-takip](https://github.com/ahmetbayrak19-afk/borc-takip)
-2. Üst menüden **Actions** sekmesine tıkla
-3. Sol taraftan **Build Android APK** workflow'unu seç
-4. En üstteki başarılı çalışmayı aç
-5. Sayfanın en altında **Artifacts** bölümünde **borc-takip-apk** dosyasını indir
-6. Zip'’i aç → `borc-takip.apk` dosyasını telefonuna yükle
-
-> **Not:** Debug APK olduğu için Android "Bilinmeyen kaynaklardan yükleme" izni ister. Ayarlardan izin verip "Yine de yükle" diyebilirsin.
-
-Manuel olarak da çalıştırabilirsin: **Actions** → **Build Android APK** → **Run workflow**
-
-## 🚀 Kullanım (Web)
+## 🚀 Kullanım
 
 ### Canlı Demo (GitHub Pages)
-Repo → **Settings** → **Pages** → Source: `main` branch → Save
+Repoyu fork'layıp GitHub Pages'i aktif edin veya dosyaları herhangi bir static host'a atın.
 
 ### Yerel Çalıştırma
 ```bash
+# Sadece index.html'i bir tarayıcıda açın
+# veya basit bir sunucu ile:
 npx serve .
 # veya
 python -m http.server 8080
 ```
 
+Ardından `http://localhost:8080` adresine gidin.
+
 ## 📁 Dosya Yapısı
 
 ```
 borc-takip/
-├── index.html
-├── app.js
-├── package.json
-├── capacitor.config.json
-├── .github/workflows/build-apk.yml
+├── index.html      # Ana arayüz + Tailwind
+├── app.js          # Tüm mantık (localStorage, hesaplamalar, UI)
 └── README.md
 ```
 
-## 🛠️ Teknik
+## 🛠️ Teknik Detaylar
 
-- Vanilla HTML + Tailwind CSS + JavaScript
-- Capacitor ile Android APK üretimi
-- Veriler sadece cihazında tutulur
+- **Frontend only** — backend / database yok
+- Tailwind CSS (CDN)
+- Font Awesome ikonlar
+- Vanilla JavaScript (framework yok)
+- Responsive, PWA'ya dönüştürülebilir
+
+## 📱 Ekran Görüntüleri (Beklenen)
+
+Uygulama, paylaştığınız mobil arayüze benzer şekilde tasarlandı:
+- Üstte borç özet kartları
+- Gelir listesi
+- Bu aya ait borç listesi (tarih + taksit + tutar + Ödendi/Düzenle/Sil)
+- Alttan açılan "Yeni Borç Ekle" formu
 
 ## 🔒 Gizlilik
 
-Tüm verileriniz **sadece sizin cihazınızda** tutulur.
+Tüm verileriniz **sadece sizin tarayıcınızda** tutulur. Hiçbir yere gönderilmez.
 
 ## 📄 Lisans
 
-MIT
+MIT — İstediğiniz gibi kullanın, değiştirin, paylaşın.
+
+---
+
+**Geliştirici notu:** Bu uygulama Grok tarafından `ahmetbayrak19-afk/borc-takip` reposu için oluşturulmuştur.

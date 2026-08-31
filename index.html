@@ -16,7 +16,7 @@
       min-height: 100%;
     }
     body { font-family: 'Inter', system-ui, sans-serif; }
-    body.app-ready { background: #f3f4f6 !important; }
+    body.app-ready { background: #f3f4f6; }
     .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06); }
     .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
     input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
@@ -326,6 +326,18 @@
   </div><!-- /app-root -->
 
   <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-2.5 rounded-full text-sm font-medium shadow-lg z-[60] opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  <script>
+    setTimeout(function () {
+      var s = document.getElementById('splash');
+      var r = document.getElementById('app-root');
+      document.body.classList.add('app-ready');
+      if (r) r.classList.add('visible');
+      if (s) {
+        s.classList.add('fade-out');
+        setTimeout(function () { s.style.display = 'none'; }, 600);
+      }
+    }, 1600);
+  </script>
   <script src="app.js"></script>
 </body>
 </html>
