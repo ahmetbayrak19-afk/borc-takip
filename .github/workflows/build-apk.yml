@@ -36,89 +36,11 @@ jobs:
         run: |
           mkdir -p www
           cp index.html www/
-          curl -fsSL "https://raw.githubusercontent.com/ahmetbayrak19-afk/borc-takip/9b2dfb8b89d88793ed72c53606fa6438ca97bdd1/app.js" -o www/app.js
-          test -s www/app.js
-          grep -q "function hideSplash" www/app.js
-          python3 << 'PY'
-          from pathlib import Path
-          p = Path("www/app.js")
-          c = p.read_text(encoding="utf-8")
-          old = """function monthNameTR(offset) {
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const d = new Date();
-  d.setMonth(d.getMonth() + offset);
-  return months[d.getMonth()];
-}
-function todayStr() { return toLocalDateStr(new Date()); }
-function addMonths(dateStr, months) {
-  const d = new Date(dateStr + 'T12:00:00');
-  d.setMonth(d.getMonth() + months);
-  return toLocalDateStr(d);
-}
-function isSameMonth(dateStr, ref) {
-  if (!ref) ref = new Date();
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
-}
-function isMonthOffset(dateStr, offset) {
-  const ref = new Date();
-  ref.setMonth(ref.getMonth() + offset);
-  return isSameMonth(dateStr, ref);
-}"""
-          neu = """function shiftMonth(date, months) {
-  const d = new Date(date.getTime());
-  const day = d.getDate();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + months);
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  d.setDate(Math.min(day, last));
-  return d;
-}
-function monthKeyFromOffset(offset) {
-  const d = shiftMonth(new Date(), offset);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-}
-function monthNameTR(offset) {
-  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const d = shiftMonth(new Date(), offset);
-  return months[d.getMonth()];
-}
-function todayStr() { return toLocalDateStr(new Date()); }
-function addMonths(dateStr, months) {
-  const d = new Date(dateStr + 'T12:00:00');
-  return toLocalDateStr(shiftMonth(d, months));
-}
-function isSameMonth(dateStr, ref) {
-  if (!ref) ref = new Date();
-  const key = ref.getFullYear() + '-' + String(ref.getMonth() + 1).padStart(2, '0');
-  return String(dateStr).substring(0, 7) === key;
-}
-function isMonthOffset(dateStr, offset) {
-  return String(dateStr).substring(0, 7) === monthKeyFromOffset(offset);
-}"""
-          if old not in c:
-              raise SystemExit("month block not found in restored app.js")
-          c = c.replace(old, neu, 1)
-          c = c.replace("""function getMonthKeyForOffset(offset) {
-  const d = new Date();
-  d.setMonth(d.getMonth() + offset);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-}""", """function getMonthKeyForOffset(offset) {
-  return monthKeyFromOffset(offset);
-}""", 1)
-          c = c.replace("    const d = new Date();\n    d.setMonth(d.getMonth() + i);", "    const d = shiftMonth(new Date(), i);", 1)
-          p.write_text(c, encoding="utf-8")
-          print("patched app.js bytes", p.stat().st_size)
-          PY
-          if [ -f resources/icon.png ]; then
-            cp resources/icon.png www/logo.png
-            cp resources/icon.png www/icon.png
-          fi
-          if [ -f logo.png ]; then
-            cp logo.png www/logo.png
-          fi
-          wc -c www/app.js
+          cp app.js www/
+          if [ -f logo.png ]; then cp logo.png www/logo.png; fi
+          if [ -f resources/icon.png ]; then cp resources/icon.png www/icon.png; fi
           ls -la www/
+          wc -c www/app.js www/index.html
 
       - name: Install npm dependencies
         run: npm install --no-audit --no-fund
@@ -128,94 +50,25 @@ function isMonthOffset(dateStr, offset) {
           npx cap add android || true
           npx cap sync android
 
-      - name: Add Android permissions (storage + notifications)
+      - name: Add Android permissions
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST" ]; then
-            if ! grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
-              sed -i '/<application/i\    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />' "$MANIFEST"
-            fi
-            if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
-              sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n    <uses-permission android:name="android.permission.VIBRATE" />' "$MANIFEST"
-            fi
-            echo "=== Permissions ==="
+            grep -q WRITE_EXTERNAL_STORAGE "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />' "$MANIFEST"
+            grep -q READ_EXTERNAL_STORAGE "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />' "$MANIFEST"
+            grep -q POST_NOTIFICATIONS "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' "$MANIFEST"
+            grep -q VIBRATE "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.VIBRATE" />' "$MANIFEST"
             grep -E "uses-permission" "$MANIFEST" || true
           fi
 
-      - name: Generate Android launcher icons from resources/icon.png
+      - name: Generate launcher icons
         run: |
-          python3 -m pip install --quiet pillow
-          python3 << 'PY'
-          from PIL import Image
-          from pathlib import Path
-          import os
-
-          src = Path("resources/icon.png")
-          if not src.exists():
-              raise SystemExit("resources/icon.png bulunamadı")
-
-          img = Image.open(src).convert("RGBA")
-          w, h = img.size
-          side = max(w, h)
-          canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-          canvas.paste(img, ((side - w) // 2, (side - h) // 2), img)
-
-          sizes = {
-              "mipmap-mdpi": 48,
-              "mipmap-hdpi": 72,
-              "mipmap-xhdpi": 96,
-              "mipmap-xxhdpi": 144,
-              "mipmap-xxxhdpi": 192,
-          }
-          fg_sizes = {
-              "mipmap-mdpi": 108,
-              "mipmap-hdpi": 162,
-              "mipmap-xhdpi": 216,
-              "mipmap-xxhdpi": 324,
-              "mipmap-xxxhdpi": 432,
-          }
-
-          res = Path("android/app/src/main/res")
-          for folder, size in sizes.items():
-              out_dir = res / folder
-              out_dir.mkdir(parents=True, exist_ok=True)
-              icon = canvas.resize((size, size), Image.Resampling.LANCZOS)
-              for name in ("ic_launcher.png", "ic_launcher_round.png"):
-                  icon.save(out_dir / name, "PNG")
-                  print("wrote", out_dir / name)
-
-          for folder, size in fg_sizes.items():
-              out_dir = res / folder
-              out_dir.mkdir(parents=True, exist_ok=True)
-              pad = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-              inner = int(size * 0.66)
-              small = canvas.resize((inner, inner), Image.Resampling.LANCZOS)
-              offset = (size - inner) // 2
-              pad.paste(small, (offset, offset), small)
-              pad.save(out_dir / "ic_launcher_foreground.png", "PNG")
-              print("wrote", out_dir / "ic_launcher_foreground.png")
-
-          anydpi = res / "mipmap-anydpi-v26"
-          anydpi.mkdir(parents=True, exist_ok=True)
-          for xml_name in ("ic_launcher.xml", "ic_launcher_round.xml"):
-              (anydpi / xml_name).write_text(
-                  '''<?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@color/ic_launcher_background"/>
-              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-          </adaptive-icon>
-          '''.strip() + "\n", encoding="utf-8")
-
-          values = res / "values"
-          values.mkdir(parents=True, exist_ok=True)
-          (values / "ic_launcher_background.xml").write_text(
-              '''<?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <color name="ic_launcher_background">#0B1B3A</color>
-          </resources>
-          '''.strip() + "\n", encoding="utf-8")
-          print("Icon generation OK")
-          PY
+          if [ -f scripts/make_icons.py ] && [ -f resources/icon.png ]; then
+            python3 -m pip install --quiet pillow
+            python3 scripts/make_icons.py
+          else
+            echo "Icon script or resources/icon.png missing, skipping"
+          fi
 
       - name: Build Debug APK
         working-directory: android
@@ -227,7 +80,7 @@ function isMonthOffset(dateStr, offset) {
         run: |
           APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "APK bulunamadı!"
+            echo "APK bulunamadi"
             find android -name "*.apk" -type f || true
             exit 1
           fi
