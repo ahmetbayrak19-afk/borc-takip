@@ -36,7 +36,9 @@ jobs:
         run: |
           mkdir -p www
           cp index.html www/
-          cp app.js www/
+          curl -fsSL "https://raw.githubusercontent.com/ahmetbayrak19-afk/borc-takip/c477ca8ab783c9b3c5bb91b1fb05d68305407b18/app.js" -o www/app.js
+          test -s www/app.js
+          grep -q "function hideSplash" www/app.js
           if [ -f logo.png ]; then cp logo.png www/logo.png; fi
           if [ -f resources/icon.png ]; then cp resources/icon.png www/icon.png; fi
           ls -la www/
