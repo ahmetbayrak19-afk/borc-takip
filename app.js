@@ -4,12 +4,10 @@ const STORAGE_INCOMES = 'borc_takip_incomes';
 const STORAGE_ADJUST = 'borc_takip_adjustments';
 let debts = [];
 let incomes = [];
-let adjustments = []; // {id, monthKey, amount, currency, note, createdAt}
+let adjustments = [];
 let editingDebtId = null;
 let currentFilter = 'this-month';
-
-// Pending payment flow
-let pendingPay = null; // { debtId, installmentIndex, amount, mode: 'full'|'partial' }
+let pendingPay = null;
 
 const CURRENCIES = [
   { code: 'TRY', symbol: '₺', label: 'TRY ₺' },
@@ -52,6 +50,24 @@ const FILTER_THEMES = {
     debt: 'bg-violet-50 rounded-xl p-4 card-shadow fade-in border border-violet-200',
     label: 'text-violet-600'
   },
+  'month-3': {
+    card: 'bg-fuchsia-50 rounded-xl p-3 card-shadow text-center border border-fuchsia-100',
+    cardActive: 'bg-fuchsia-50 rounded-xl p-3 card-shadow text-center border-2 border-fuchsia-400',
+    debt: 'bg-fuchsia-50 rounded-xl p-4 card-shadow fade-in border border-fuchsia-200',
+    label: 'text-fuchsia-700'
+  },
+  'month-4': {
+    card: 'bg-cyan-50 rounded-xl p-3 card-shadow text-center border border-cyan-100',
+    cardActive: 'bg-cyan-50 rounded-xl p-3 card-shadow text-center border-2 border-cyan-400',
+    debt: 'bg-cyan-50 rounded-xl p-4 card-shadow fade-in border border-cyan-200',
+    label: 'text-cyan-700'
+  },
+  'month-5': {
+    card: 'bg-orange-50 rounded-xl p-3 card-shadow text-center border border-orange-100',
+    cardActive: 'bg-orange-50 rounded-xl p-3 card-shadow text-center border-2 border-orange-400',
+    debt: 'bg-orange-50 rounded-xl p-4 card-shadow fade-in border border-orange-200',
+    label: 'text-orange-700'
+  },
   all: {
     card: 'bg-slate-50 rounded-xl p-3 card-shadow text-center border border-slate-100',
     cardActive: 'bg-slate-50 rounded-xl p-3 card-shadow text-center border-2 border-slate-400',
@@ -62,7 +78,6 @@ const FILTER_THEMES = {
 function getTheme(filter) {
   return FILTER_THEMES[filter] || FILTER_THEMES['this-month'];
 }
-
 function currencyMeta(code) {
   return CURRENCIES.find(function(c) { return c.code === code; }) || CURRENCIES[0];
 }
@@ -97,7 +112,6 @@ function formatDateTR(dateStr) {
   return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + days[d.getDay()];
 }
 function shiftMonth(date, months) {
-  // 31 Agustos + 1 ay = 30 Eylul (Ekim'e tasmasin)
   const d = new Date(date.getTime());
   const day = d.getDate();
   d.setDate(1);
@@ -162,13 +176,11 @@ function loadData() {
 function saveDebts() { localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts)); }
 function saveIncomes() { localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes)); }
 function saveAdjustments() { localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments)); }
-
 function installmentRemaining(debt, index) {
   const full = debt.installmentAmount || debt.totalAmount || 0;
   const paid = (debt.partials && Number(debt.partials[index])) || 0;
   return Math.max(0, Math.round((full - paid) * 100) / 100);
 }
-
 function getActiveInstallments() {
   const result = [];
   debts.forEach(function(debt) {
@@ -196,27 +208,28 @@ function getActiveInstallments() {
   });
   return result;
 }
-
 function calcSummaries() {
-  // Her kartta SADECE o döneme ait borç tutarı (maaş/kalan değil)
   const items = getActiveInstallments();
-  let overdue = 0, today = 0, thisMonth = 0, next1 = 0, next2 = 0, later = 0, total = 0;
+  let overdue = 0, today = 0, thisMonth = 0, next1 = 0, next2 = 0, next3 = 0, next4 = 0, next5 = 0, later = 0, total = 0;
   items.forEach(function(item) {
     total += item.amount;
     if (isOverdue(item.dueDate)) overdue += item.amount;
     if (isToday(item.dueDate)) today += item.amount;
-    // Bu ay: o aydaki tüm borçlar (gecikmiş + bugün + kalan günler)
     if (isSameMonth(item.dueDate)) thisMonth += item.amount;
     else if (isMonthOffset(item.dueDate, 1)) next1 += item.amount;
     else if (isMonthOffset(item.dueDate, 2)) next2 += item.amount;
+    else if (isMonthOffset(item.dueDate, 3)) next3 += item.amount;
+    else if (isMonthOffset(item.dueDate, 4)) next4 += item.amount;
+    else if (isMonthOffset(item.dueDate, 5)) next5 += item.amount;
     else if (!isOverdue(item.dueDate)) later += item.amount;
   });
-  return { overdue: overdue, today: today, thisMonth: thisMonth, next1: next1, next2: next2, later: later, total: total };
+  return { overdue: overdue, today: today, thisMonth: thisMonth, next1: next1, next2: next2, next3: next3, next4: next4, next5: next5, later: later, total: total };
 }
-
 function getFilterMonthOffset(filter) {
-  if (filter === 'month-1') return 1;
-  if (filter === 'month-2') return 2;
+  if (filter && filter.indexOf('month-') === 0) {
+    const n = parseInt(filter.slice(6), 10);
+    return isNaN(n) ? 0 : n;
+  }
   return 0;
 }
 function balanceMonthName(filter) {
@@ -250,7 +263,6 @@ function getDebtByCurrencyForOffset(offset) {
   });
   return map;
 }
-
 function renderBalance() {
   const offset = getFilterMonthOffset(currentFilter);
   const monthName = balanceMonthName(currentFilter);
@@ -302,30 +314,35 @@ function renderBalance() {
   }).filter(Boolean);
   sub.textContent = monthName + ': ' + parts.join(' · ');
 }
-
 function renderSummaries() {
   const s = calcSummaries();
-  document.getElementById('sum-overdue').textContent = formatMoney(s.overdue, 'TRY');
-  document.getElementById('sum-today').textContent = formatMoney(s.today, 'TRY');
-  document.getElementById('sum-this-month').textContent = formatMoney(s.thisMonth, 'TRY');
+  const setTxt = function(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+  setTxt('sum-overdue', formatMoney(s.overdue, 'TRY'));
+  setTxt('sum-today', formatMoney(s.today, 'TRY'));
+  setTxt('lbl-this-month', monthNameTR(0));
+  setTxt('sum-this-month', formatMoney(s.thisMonth, 'TRY'));
+  setTxt('lbl-month-1', monthNameTR(1));
+  setTxt('sum-month-1', formatMoney(s.next1, 'TRY'));
+  setTxt('lbl-month-2', monthNameTR(2));
+  setTxt('sum-month-2', formatMoney(s.next2, 'TRY'));
+  setTxt('lbl-month-3', monthNameTR(3));
+  setTxt('sum-month-3', formatMoney(s.next3, 'TRY'));
+  setTxt('lbl-month-4', monthNameTR(4));
+  setTxt('sum-month-4', formatMoney(s.next4, 'TRY'));
+  setTxt('lbl-month-5', monthNameTR(5));
+  setTxt('sum-month-5', formatMoney(s.next5, 'TRY'));
+  setTxt('sum-total', formatMoney(s.total, 'TRY'));
   const cards = document.querySelectorAll('#summary-grid > div');
-  if (cards.length >= 6) {
-    const filters = ['overdue', 'today', 'this-month', 'month-1', 'month-2', 'all'];
-    cards[3].querySelector('p:first-child').textContent = monthNameTR(1);
-    cards[3].querySelector('p:last-child').textContent = formatMoney(s.next1, 'TRY');
-    cards[4].querySelector('p:first-child').textContent = monthNameTR(2);
-    // Sadece 2. ayın borçları — sonraki aylar buraya eklenmez
-    cards[4].querySelector('p:last-child').textContent = formatMoney(s.next2, 'TRY');
-    for (let i = 0; i < 6; i++) {
-      cards[i].setAttribute('data-filter', filters[i]);
-      cards[i].style.cursor = 'pointer';
-      const th = getTheme(filters[i]);
-      cards[i].className = (filters[i] === currentFilter) ? th.cardActive : th.card;
-    }
+  for (let i = 0; i < cards.length; i++) {
+    const f = cards[i].getAttribute('data-filter');
+    cards[i].style.cursor = 'pointer';
+    const th = getTheme(f);
+    cards[i].className = (f === currentFilter) ? th.cardActive : th.card;
   }
-  document.getElementById('sum-total').textContent = formatMoney(s.total, 'TRY');
 }
-
 function renderIncomes() {
   const list = document.getElementById('income-list');
   const empty = document.getElementById('income-empty');
@@ -340,7 +357,6 @@ function renderIncomes() {
     list.appendChild(el);
   });
 }
-
 function renderDebts() {
   const filter = currentFilter;
   const list = document.getElementById('debt-list');
@@ -351,16 +367,13 @@ function renderDebts() {
   if (filter === 'overdue') items = items.filter(function(i) { return isOverdue(i.dueDate); });
   else if (filter === 'today') items = items.filter(function(i) { return isToday(i.dueDate); });
   else if (filter === 'this-month') items = items.filter(function(i) { return isSameMonth(i.dueDate); });
-  else if (filter === 'month-1') items = items.filter(function(i) { return isMonthOffset(i.dueDate, 1); });
-  else if (filter === 'month-2') items = items.filter(function(i) { return isMonthOffset(i.dueDate, 2); });
-  else if (filter === 'all') { /* all remaining */ }
-  else items = items.filter(function(i) { return isSameMonth(i.dueDate); });
-
+  else if (filter && filter.indexOf('month-') === 0) {
+    const off = getFilterMonthOffset(filter);
+    items = items.filter(function(i) { return isMonthOffset(i.dueDate, off); });
+  } else if (filter === 'all') {
+  } else items = items.filter(function(i) { return isSameMonth(i.dueDate); });
   if (label) label.textContent = filterLabel(filter);
-  if (items.length === 0) {
-    empty.classList.remove('hidden');
-    return;
-  }
+  if (items.length === 0) { empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
   items.sort(function(a, b) { return a.dueDate.localeCompare(b.dueDate); });
   items.forEach(function(item) {
@@ -372,25 +385,20 @@ function renderDebts() {
     list.appendChild(el);
   });
 }
-
 function filterLabel(f) {
   if (f === 'overdue') return 'Gecikmiş';
   if (f === 'today') return 'Bugün';
   if (f === 'this-month') return 'Bu Ay';
-  if (f === 'month-1') return monthNameTR(1);
-  if (f === 'month-2') return monthNameTR(2);
+  if (f && f.indexOf('month-') === 0) return monthNameTR(getFilterMonthOffset(f));
   if (f === 'all') return 'Tümü';
   return 'Bu Ay';
 }
-
 function renderAll() {
   renderIncomes();
   renderBalance();
   renderSummaries();
   renderDebts();
 }
-
-// ==================== PAYMENT FLOW ====================
 function startPay(debtId, installmentIndex, mode) {
   const debt = debts.find(function(d) { return d.id === debtId; });
   if (!debt) return;
@@ -407,7 +415,6 @@ function startPay(debtId, installmentIndex, mode) {
     document.getElementById('modal-pay-source').classList.remove('hidden');
   }
 }
-
 function closePartialModal() {
   document.getElementById('modal-partial').classList.add('hidden');
   pendingPay = null;
@@ -424,7 +431,6 @@ function submitPartialAmount() {
   document.getElementById('pay-source-info').textContent = escapeHtml(debt.name) + ' — ' + formatMoney(pendingPay.amount, debt.currency || 'TRY');
   document.getElementById('modal-pay-source').classList.remove('hidden');
 }
-
 function closePaySourceModal() {
   document.getElementById('modal-pay-source').classList.add('hidden');
   pendingPay = null;
@@ -437,35 +443,21 @@ function confirmPaySource(source) {
   const idx = pendingPay.installmentIndex;
   const due = addMonths(debt.startDate, idx);
   const monthKey = due.substring(0, 7);
-
   if (!debt.partials) debt.partials = {};
   debt.partials[idx] = Math.round(((Number(debt.partials[idx]) || 0) + amount) * 100) / 100;
-
-  while ((debt.paidInstallments || 0) < (debt.installmentCount || 1) &&
-         installmentRemaining(debt, debt.paidInstallments || 0) <= 0) {
+  while ((debt.paidInstallments || 0) < (debt.installmentCount || 1) && installmentRemaining(debt, debt.paidInstallments || 0) <= 0) {
     debt.paidInstallments = (debt.paidInstallments || 0) + 1;
   }
-
   if (source === 'salary') {
-    adjustments.push({
-      id: uid(),
-      monthKey: monthKey,
-      amount: amount,
-      currency: debt.currency || 'TRY',
-      note: 'Maaştan ödeme: ' + debt.name,
-      createdAt: new Date().toISOString()
-    });
+    adjustments.push({ id: uid(), monthKey: monthKey, amount: amount, currency: debt.currency || 'TRY', note: 'Maaştan ödeme: ' + debt.name, createdAt: new Date().toISOString() });
     saveAdjustments();
   }
-
   saveDebts();
   closePaySourceModal();
   showToast(source === 'salary' ? 'Maaştan ödendi' : 'Ekstra ile ödendi');
   renderAll();
   scheduleDueNotifications();
 }
-
-// ==================== DEBT CRUD ====================
 function openDebtModal(editId) {
   editingDebtId = editId || null;
   document.getElementById('debt-modal-title').textContent = editId ? 'Borcu Düzenle' : 'Yeni Borç Ekle';
@@ -521,7 +513,6 @@ function saveDebt(e) {
   const count = recurring ? (parseInt(document.getElementById('debt-installments').value, 10) || 1) : 1;
   const currency = document.getElementById('debt-currency').value || 'TRY';
   if (!name || isNaN(amount) || amount <= 0 || !due) { showToast('Eksik bilgi'); return; }
-
   let paidInstallments = 0;
   let partials = {};
   if (editingDebtId) {
@@ -531,7 +522,6 @@ function saveDebt(e) {
       partials = old.partials || {};
     }
   }
-
   const debt = {
     id: editingDebtId || uid(),
     name: name,
@@ -545,7 +535,6 @@ function saveDebt(e) {
     currency: currency,
     createdAt: new Date().toISOString()
   };
-
   if (editingDebtId) {
     const idx = debts.findIndex(function(d) { return d.id === editingDebtId; });
     if (idx >= 0) debts[idx] = debt;
@@ -558,10 +547,7 @@ function saveDebt(e) {
   renderAll();
   scheduleDueNotifications();
 }
-
-function editDebt(id) {
-  openDebtModal(id);
-}
+function editDebt(id) { openDebtModal(id); }
 function deleteDebt(id) {
   if (!confirm('Bu borcu silmek istediğinize emin misiniz?')) return;
   debts = debts.filter(function(d) { return d.id !== id; });
@@ -569,8 +555,6 @@ function deleteDebt(id) {
   showToast('Borç silindi');
   renderAll();
 }
-
-// ==================== INCOME ====================
 function openIncomeModal() {
   document.getElementById('income-name').value = '';
   document.getElementById('income-amount').value = '';
@@ -599,15 +583,8 @@ function deleteIncome(id) {
   showToast('Gelir silindi');
   renderAll();
 }
-
-// ==================== SETTINGS / EXPORT / NOTIF ====================
-function openSettings() {
-  document.getElementById('modal-settings').classList.remove('hidden');
-}
-function closeSettings() {
-  document.getElementById('modal-settings').classList.add('hidden');
-}
-
+function openSettings() { document.getElementById('modal-settings').classList.remove('hidden'); }
+function closeSettings() { document.getElementById('modal-settings').classList.add('hidden'); }
 function openMonthsModal() {
   closeSettings();
   const list = document.getElementById('months-list');
@@ -620,10 +597,7 @@ function openMonthsModal() {
     months.push({ key: key, name: name, offset: i });
   }
   months.forEach(function(m) {
-    const items = getActiveInstallments().filter(function(it) {
-      const dd = it.dueDate.substring(0, 7);
-      return dd === m.key;
-    });
+    const items = getActiveInstallments().filter(function(it) { return it.dueDate.substring(0, 7) === m.key; });
     const totalByCur = {};
     items.forEach(function(it) {
       const c = it.currency || 'TRY';
@@ -638,9 +612,7 @@ function openMonthsModal() {
   });
   document.getElementById('modal-months').classList.remove('hidden');
 }
-function closeMonthsModal() {
-  document.getElementById('modal-months').classList.add('hidden');
-}
+function closeMonthsModal() { document.getElementById('modal-months').classList.add('hidden'); }
 function openMonthDebts(monthKey, title) {
   document.getElementById('month-debts-title').textContent = title;
   const list = document.getElementById('month-debts-list');
@@ -667,46 +639,50 @@ function openMonthDebts(monthKey, title) {
   totalEl.textContent = 'Toplam: ' + Object.keys(byCur).map(function(c) { return formatMoney(byCur[c], c); }).join(' · ');
   document.getElementById('modal-month-debts').classList.remove('hidden');
 }
-function closeMonthDebtsModal() {
-  document.getElementById('modal-month-debts').classList.add('hidden');
-}
-
+function closeMonthDebtsModal() { document.getElementById('modal-month-debts').classList.add('hidden'); }
 function exportData() {
   const data = { debts: debts, incomes: incomes, adjustments: adjustments, exportedAt: new Date().toISOString() };
   const json = JSON.stringify(data, null, 2);
-  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem && window.Capacitor.Plugins.Share) {
-    const Filesystem = window.Capacitor.Plugins.Filesystem;
-    const Share = window.Capacitor.Plugins.Share;
-    const fileName = 'borc-takip-' + todayStr() + '.json';
-    Filesystem.writeFile({
-      path: fileName,
-      data: btoa(unescape(encodeURIComponent(json))),
-      directory: 'CACHE',
-      encoding: 'utf8'
-    }).then(function(res) {
-      return Share.share({ title: 'Borç Takip Verileri', text: 'Veriler', url: res.uri, dialogTitle: 'Verileri paylaş' });
-    }).then(function() {
-      showToast('Paylaşıldı');
-    }).catch(function(err) {
-      console.error(err);
-      downloadFallback(json);
-    });
-  } else {
-    downloadFallback(json);
-  }
+  const fileName = 'borc-takip-' + todayStr() + '.json';
   closeSettings();
+  const cap = window.Capacitor;
+  const FS = cap && cap.Plugins && cap.Plugins.Filesystem;
+  const Share = cap && cap.Plugins && cap.Plugins.Share;
+  if (!FS) { downloadFallback(json, fileName); return; }
+  const writeTo = function(dir) {
+    return FS.writeFile({ path: fileName, data: json, directory: dir, encoding: 'utf8', recursive: true }).then(function() {
+      return FS.getUri({ path: fileName, directory: dir }).then(function(u) {
+        return { dir: dir, uri: u && u.uri };
+      }).catch(function() { return { dir: dir, uri: null }; });
+    });
+  };
+  const afterSaved = function(res) {
+    showToast('Kaydedildi: Documents / ' + fileName);
+    if (Share && res.uri) {
+      return Share.share({ title: 'Borç Takip yedek', text: fileName, url: res.uri, dialogTitle: 'Dosyayı kaydet veya paylaş' }).catch(function() {});
+    }
+  };
+  const tryDirs = function(dirs, i) {
+    if (i >= dirs.length) { downloadFallback(json, fileName); return; }
+    writeTo(dirs[i]).then(afterSaved).catch(function() { tryDirs(dirs, i + 1); });
+  };
+  const start = function() { tryDirs(['DOCUMENTS', 'EXTERNAL_STORAGE', 'DATA', 'CACHE'], 0); };
+  if (FS.requestPermissions) FS.requestPermissions().then(start).catch(start);
+  else start();
 }
-function downloadFallback(json) {
+function downloadFallback(json, fileName) {
+  fileName = fileName || ('borc-takip-' + todayStr() + '.json');
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'borc-takip-' + todayStr() + '.json';
+  a.download = fileName;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('İndirildi');
+  showToast('İndirildi: ' + fileName);
 }
-
 function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -726,7 +702,6 @@ function importData(event) {
   event.target.value = '';
   closeSettings();
 }
-
 function clearAllData() {
   if (!confirm('TÜM veriler silinecek. Emin misiniz?')) return;
   debts = []; incomes = []; adjustments = [];
@@ -735,23 +710,17 @@ function clearAllData() {
   renderAll();
   closeSettings();
 }
-
 function requestNotifPermission() {
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
     window.Capacitor.Plugins.LocalNotifications.requestPermissions().then(function(res) {
-      if (res.display === 'granted') {
-        showToast('Bildirim izni verildi');
-        scheduleDueNotifications();
-      } else {
-        showToast('İzin reddedildi');
-      }
+      if (res.display === 'granted') { showToast('Bildirim izni verildi'); scheduleDueNotifications(); }
+      else showToast('İzin reddedildi');
     }).catch(function() { showToast('Bildirim desteklenmiyor'); });
   } else {
     showToast('Sadece Android APK\'da çalışır');
   }
   closeSettings();
 }
-
 function scheduleDueNotifications() {
   if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.LocalNotifications) return;
   const LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
@@ -759,27 +728,11 @@ function scheduleDueNotifications() {
   const today = todayStr();
   const dueToday = getActiveInstallments().filter(function(i) { return i.dueDate === today; });
   if (dueToday.length === 0) return;
-  const totalByCur = {};
-  dueToday.forEach(function(i) {
-    const c = i.currency || 'TRY';
-    totalByCur[c] = (totalByCur[c] || 0) + i.amount;
-  });
   const body = dueToday.map(function(i) { return i.name + ': ' + formatMoney(i.amount, i.currency); }).join(', ');
   LocalNotifications.schedule({
-    notifications: [{
-      id: 1,
-      title: 'Bugün ödenecek borçlar',
-      body: body,
-      schedule: { at: new Date(Date.now() + 2000) },
-      sound: undefined,
-      attachments: undefined,
-      actionTypeId: '',
-      extra: null
-    }]
+    notifications: [{ id: 1, title: 'Bugün ödenecek borçlar', body: body, schedule: { at: new Date(Date.now() + 2000) }, sound: undefined, attachments: undefined, actionTypeId: '', extra: null }]
   }).catch(function(e) { console.log('notif', e); });
 }
-
-// ==================== NAME PICKER ====================
 function openNamePicker() {
   const list = document.getElementById('name-picker-list');
   const empty = document.getElementById('name-picker-empty');
@@ -789,28 +742,20 @@ function openNamePicker() {
   debts.forEach(function(d) {
     if (d.name && !seen[d.name]) { seen[d.name] = true; names.push(d.name); }
   });
-  if (names.length === 0) {
-    empty.classList.remove('hidden');
-  } else {
+  if (names.length === 0) empty.classList.remove('hidden');
+  else {
     empty.classList.add('hidden');
     names.sort().forEach(function(n) {
       const el = document.createElement('button');
       el.className = 'w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-blue-50 font-medium text-gray-900';
       el.textContent = n;
-      el.onclick = function() {
-        document.getElementById('debt-name').value = n;
-        closeNamePicker();
-      };
+      el.onclick = function() { document.getElementById('debt-name').value = n; closeNamePicker(); };
       list.appendChild(el);
     });
   }
   document.getElementById('modal-name-picker').classList.remove('hidden');
 }
-function closeNamePicker() {
-  document.getElementById('modal-name-picker').classList.add('hidden');
-}
-
-// ==================== SPLASH & INIT ====================
+function closeNamePicker() { document.getElementById('modal-name-picker').classList.add('hidden'); }
 function hideSplash() {
   const splash = document.getElementById('splash');
   const root = document.getElementById('app-root');
@@ -826,8 +771,6 @@ function hideSplash() {
     if (root) root.classList.add('visible');
   }
 }
-
-// Capacitor App back button
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
   window.Capacitor.Plugins.App.addListener('backButton', function(e) {
     const modals = ['modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
@@ -840,16 +783,13 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
         return;
       }
     }
-    // no modal open -> exit or default
   });
 }
-
 document.addEventListener('DOMContentLoaded', function() {
   loadData();
   fillCurrencySelects();
   renderAll();
   scheduleDueNotifications();
-
   document.getElementById('btn-add-debt').addEventListener('click', function() { openDebtModal(); });
   document.getElementById('btn-add-income').addEventListener('click', openIncomeModal);
   document.getElementById('btn-settings').addEventListener('click', openSettings);
@@ -863,7 +803,6 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   document.getElementById('debt-installments').addEventListener('input', updateInstallmentPreview);
   document.getElementById('debt-total').addEventListener('input', updateInstallmentPreview);
-
   const grid = document.getElementById('summary-grid');
   if (grid) {
     grid.addEventListener('click', function(e) {
@@ -871,7 +810,6 @@ document.addEventListener('DOMContentLoaded', function() {
       while (t && t !== grid) {
         if (t.dataset && t.dataset.filter) {
           currentFilter = t.dataset.filter;
-          renderFilterOptions();
           renderBalance();
           renderSummaries();
           renderDebts();
@@ -881,14 +819,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
-
-  // name picker
   const pickBtn = document.getElementById('btn-pick-name');
   if (pickBtn) pickBtn.addEventListener('click', openNamePicker);
-
   setTimeout(hideSplash, 1200);
 });
-
-function renderFilterOptions() {
-  // already handled in renderSummaries via themes
-}
