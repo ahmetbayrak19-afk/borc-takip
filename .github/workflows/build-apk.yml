@@ -90,7 +90,6 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "Fixed signing secrets are not configured; keeping the debug-signed APK."
@@ -103,7 +102,7 @@ jobs:
             --ks "$RUNNER_TEMP/borc-takip.jks" \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
-            --key-pass "pass:$ANDROID_KEY_PASSWORD" \
+            --key-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
             --out android/app/build/outputs/apk/borc-takip-fixed.apk \
             "$APK_INPUT"
           "$APKSIGNER" verify --verbose android/app/build/outputs/apk/borc-takip-fixed.apk
