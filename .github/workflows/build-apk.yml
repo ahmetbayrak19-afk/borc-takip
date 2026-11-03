@@ -34,22 +34,17 @@ jobs:
 
       - name: Create www directory and copy web assets
         run: |
+          npm ci --no-audit --no-fund
+          npm run build
           mkdir -p www
-          cp index.html www/
-          python3 scripts/patch_income_html.py www/index.html
-          curl -fsSL "https://raw.githubusercontent.com/ahmetbayrak19-afk/borc-takip/c477ca8ab783c9b3c5bb91b1fb05d68305407b18/app.js" -o www/app.js
-          python3 scripts/patch_income.py www/app.js
-          python3 scripts/patch_names.py www/app.js
-          grep -q setIncomeType www/app.js
-          grep -q removeSavedName www/app.js
-          grep -q income-type-recurring www/index.html
+          cp index.html app.js app.css www/
+          mkdir -p www/vendor/fontawesome
+          cp -R node_modules/@fortawesome/fontawesome-free/css www/vendor/fontawesome/
+          cp -R node_modules/@fortawesome/fontawesome-free/webfonts www/vendor/fontawesome/
           if [ -f logo.png ]; then cp logo.png www/logo.png; fi
           if [ -f resources/icon.png ]; then cp resources/icon.png www/icon.png; fi
           ls -la www/
           wc -c www/app.js www/index.html
-
-      - name: Install npm dependencies
-        run: npm install --no-audit --no-fund
 
       - name: Add Android platform with Capacitor
         run: |
@@ -67,6 +62,12 @@ jobs:
             grep -E "uses-permission" "$MANIFEST" || true
           fi
 
+      - name: Set increasing Android version
+        run: |
+          GRADLE_FILE="android/app/build.gradle"
+          sed -i "s/versionCode [0-9][0-9]*/versionCode $GITHUB_RUN_NUMBER/" "$GRADLE_FILE"
+          sed -i "s/versionName \"[^\"]*\"/versionName \"1.2.$GITHUB_RUN_NUMBER\"/" "$GRADLE_FILE"
+
       - name: Generate launcher icons
         run: |
           if [ -f scripts/make_icons.py ] && [ -f resources/icon.png ]; then
@@ -82,9 +83,35 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Sign APK with fixed key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Fixed signing secrets are not configured; keeping the debug-signed APK."
+            exit 0
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/borc-takip.jks"
+          APK_INPUT=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          APKSIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          "$APKSIGNER" sign \
+            --ks "$RUNNER_TEMP/borc-takip.jks" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+            --key-pass "pass:$ANDROID_KEY_PASSWORD" \
+            --out android/app/build/outputs/apk/borc-takip-fixed.apk \
+            "$APK_INPUT"
+          "$APKSIGNER" verify --verbose android/app/build/outputs/apk/borc-takip-fixed.apk
+
       - name: Locate APK
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          APK_PATH=$(find android/app/build/outputs/apk -name "borc-takip-fixed.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          fi
           if [ -z "$APK_PATH" ]; then
             echo "APK bulunamadi"
             find android -name "*.apk" -type f || true
