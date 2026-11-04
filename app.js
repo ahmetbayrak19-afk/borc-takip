@@ -369,7 +369,9 @@ function renderSummaries() {
     const f = cards[i].getAttribute('data-filter');
     cards[i].style.cursor = 'pointer';
     const th = getTheme(f);
-    cards[i].className = (f === currentFilter) ? th.cardActive : th.card;
+    cards[i].className = (f === currentFilter)
+      ? th.cardActive + ' opacity-100 shadow-lg -translate-y-0.5 transition-all duration-200'
+      : th.card + ' opacity-50 transition-all duration-200';
   }
 }
 function renderIncomes() {
@@ -496,7 +498,15 @@ function confirmPaySource(source) {
 }
 function defaultDateForMonth(monthKey) {
   if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return todayStr();
+  if (monthKey === todayStr().substring(0, 7)) return todayStr();
   return monthKey + '-15';
+}
+function selectedFilterMonthKey() {
+  if (currentFilter === 'this-month') return getMonthKeyForOffset(0);
+  if (currentFilter && currentFilter.indexOf('month-') === 0) {
+    return getMonthKeyForOffset(getFilterMonthOffset(currentFilter));
+  }
+  return null;
 }
 function openDebtModal(editId, installmentIndex, monthKey) {
   editingDebtId = editId || null;
@@ -1190,7 +1200,9 @@ document.addEventListener('DOMContentLoaded', function() {
   fillCurrencySelects();
   renderAll();
   scheduleDueNotifications();
-  document.getElementById('btn-add-debt').addEventListener('click', function() { openDebtModal(); });
+  document.getElementById('btn-add-debt').addEventListener('click', function() {
+    openDebtModal(null, null, selectedFilterMonthKey());
+  });
   document.getElementById('btn-add-month-debt').addEventListener('click', function() {
     const monthKey = selectedMonthContext;
     document.getElementById('modal-month-debts').classList.add('hidden');
