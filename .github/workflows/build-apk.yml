@@ -53,6 +53,15 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
+      - name: Add Google Drive authentication plugin
+        run: |
+          JAVA_DIR="android/app/src/main/java/com/borctakip/app"
+          mkdir -p "$JAVA_DIR"
+          cp android-plugins/GoogleDriveAuthPlugin.java "$JAVA_DIR/GoogleDriveAuthPlugin.java"
+          cp android-plugins/MainActivity.java "$JAVA_DIR/MainActivity.java"
+          GRADLE_FILE="android/app/build.gradle"
+          grep -q "play-services-auth" "$GRADLE_FILE" || sed -i "/dependencies {/a\\    implementation 'com.google.android.gms:play-services-auth:21.2.0'" "$GRADLE_FILE"
+
       - name: Add Android permissions
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
