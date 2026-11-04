@@ -890,6 +890,7 @@ function scheduleDueNotifications() {
   }).catch(function(e) { console.log('notif', e); });
 }
 const STORAGE_HIDDEN_NAMES = 'borc_takip_hidden_names';
+const STORAGE_SYNC_WELCOME = 'borc_takip_sync_welcome_seen';
 let hiddenNames = [];
 function loadHiddenNames() {
   try { hiddenNames = JSON.parse(localStorage.getItem(STORAGE_HIDDEN_NAMES) || '[]'); }
@@ -993,7 +994,31 @@ async function uploadDrivePayload(token, fileId, payload) {
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
   await driveRequest(url, { method: fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: body }, token);
 }
-async function googleSignIn() {
+function openDrivePermission() {
+  document.getElementById('modal-drive-permission').classList.remove('hidden');
+}
+function closeDrivePermission() {
+  document.getElementById('modal-drive-permission').classList.add('hidden');
+}
+function acceptSyncWelcome() {
+  localStorage.setItem(STORAGE_SYNC_WELCOME, '1');
+  document.getElementById('modal-sync-welcome').classList.add('hidden');
+  openDrivePermission();
+}
+function dismissSyncWelcome() {
+  localStorage.setItem(STORAGE_SYNC_WELCOME, '1');
+  document.getElementById('modal-sync-welcome').classList.add('hidden');
+}
+function showSyncWelcomeIfNeeded() {
+  if (!getSyncMeta().signedIn && !localStorage.getItem(STORAGE_SYNC_WELCOME)) {
+    document.getElementById('modal-sync-welcome').classList.remove('hidden');
+  }
+}
+function googleSignIn() {
+  openDrivePermission();
+}
+async function continueGoogleSignIn() {
+  closeDrivePermission();
   const plugin = googleAuthPlugin();
   if (!plugin) { showToast('Google girişi bu sürümde kullanılamıyor'); return; }
   try {
@@ -1043,12 +1068,15 @@ async function syncNow(manual) {
 }
 async function restoreGoogleSession() {
   const plugin = googleAuthPlugin();
-  if (!plugin) { updateSyncUI(); return; }
+  if (!plugin) { updateSyncUI(); showSyncWelcomeIfNeeded(); return; }
   try {
     await plugin.getToken();
     setSyncMeta({ signedIn: true });
     syncNow(false);
-  } catch (e) { setSyncMeta({ signedIn: false }); }
+  } catch (e) {
+    setSyncMeta({ signedIn: false });
+    showSyncWelcomeIfNeeded();
+  }
 }
 function isNameHidden(name) {
   return hiddenNames.indexOf(name) >= 0;
@@ -1132,7 +1160,7 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
     if (state && state.isActive) syncNow(false);
   });
   window.Capacitor.Plugins.App.addListener('backButton', function(e) {
-    const modals = ['modal-edit-scope', 'modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
+    const modals = ['modal-drive-permission', 'modal-sync-welcome', 'modal-edit-scope', 'modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
     for (let i = 0; i < modals.length; i++) {
       const m = document.getElementById(modals[i]);
       if (m && !m.classList.contains('hidden')) {
