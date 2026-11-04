@@ -14,6 +14,7 @@ let debtReturnMonth = null;
 let pendingDebtSave = null;
 let currentFilter = 'this-month';
 let pendingPay = null;
+let savedDebtId = null;
 
 const CURRENCIES = [
   { code: 'TRY', symbol: '₺', label: 'TRY ₺' },
@@ -697,15 +698,38 @@ function persistDebt(debt, wasEdited, editedInstallment) {
     hiddenNames = hiddenNames.filter(function(x) { return x !== debt.name; });
     saveHiddenNames();
   }
-  const returnMonth = debtReturnMonth;
   const date = editedInstallment?.dueDate || debt.startDate;
   const amount = editedInstallment?.amount ?? debt.installmentAmount;
   const detail = debt.name + ' · ' + formatDateTR(date) + ' · ' + formatMoney(amount, debt.currency) + ((debt.installmentCount || 1) > 1 ? ' · ' + debt.installmentCount + ' taksit' : '');
   closeDebtModal();
   renderAll();
-  if (returnMonth) openMonthDebts(returnMonth, monthTitleFromKey(returnMonth));
-  showToast(detail + (editId || wasEdited ? ' olarak güncellendi' : ' olarak eklendi'), 5200);
+  if (editId || wasEdited) showToast(detail + ' olarak güncellendi', 5200);
+  else showDebtSavedModal(debt);
   scheduleDueNotifications();
+}
+function showDebtSavedModal(debt) {
+  savedDebtId = debt.id;
+  selectedMonthContext = null;
+  document.getElementById('modal-month-debts').classList.add('hidden');
+  document.getElementById('saved-debt-name').textContent = debt.name;
+  document.getElementById('saved-debt-date').textContent = formatDateTR(debt.startDate);
+  document.getElementById('saved-debt-amount').textContent = formatMoney(debt.installmentAmount, debt.currency);
+  const count = debt.installmentCount || 1;
+  const row = document.getElementById('saved-debt-installments-row');
+  if (count > 1) {
+    document.getElementById('saved-debt-installments').textContent = count + ' taksit · Her taksit ' + formatMoney(debt.installmentAmount, debt.currency);
+    row.classList.remove('hidden');
+  } else row.classList.add('hidden');
+  document.getElementById('modal-debt-saved').classList.remove('hidden');
+}
+function closeDebtSavedModal() {
+  document.getElementById('modal-debt-saved').classList.add('hidden');
+  savedDebtId = null;
+}
+function editSavedDebt() {
+  const id = savedDebtId;
+  closeDebtSavedModal();
+  if (id) openDebtModal(id);
 }
 function cancelDebtScope() {
   document.getElementById('modal-edit-scope').classList.add('hidden');
@@ -1371,7 +1395,7 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
     if (state && state.isActive) { syncNow(false); refreshRates(); }
   });
   window.Capacitor.Plugins.App.addListener('backButton', function(e) {
-    const modals = ['modal-drive-permission', 'modal-sync-welcome', 'modal-edit-scope', 'modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
+    const modals = ['modal-drive-permission', 'modal-sync-welcome', 'modal-debt-saved', 'modal-edit-scope', 'modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
     for (let i = 0; i < modals.length; i++) {
       const m = document.getElementById(modals[i]);
       if (m && !m.classList.contains('hidden')) {

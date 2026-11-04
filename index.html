@@ -123,9 +123,8 @@
     </section>
 
     <section class="mt-6">
-      <div class="flex items-center justify-between mb-3">
+      <div class="mb-3">
         <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Gelirlerim</h2>
-        <button id="btn-add-income" class="text-blue-600 text-sm font-medium flex items-center gap-1"><i class="fas fa-plus text-xs"></i> Ekle</button>
       </div>
       <div id="income-list" class="space-y-2"></div>
       <div id="income-empty" class="bg-white rounded-xl p-4 card-shadow text-center text-gray-400 text-sm hidden">Henüz gelir eklenmedi.</div>
@@ -145,10 +144,35 @@
   </main>
 
   <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 safe-bottom z-30">
-    <div class="max-w-lg mx-auto">
-      <button id="btn-add-debt" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
-        <i class="fas fa-plus"></i> Yeni Borç Ekle
+    <div class="max-w-lg mx-auto grid grid-cols-2 gap-3">
+      <button id="btn-add-debt" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+        <i class="fas fa-plus"></i> Borç Ekle
       </button>
+      <button id="btn-add-income" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+        <i class="fas fa-plus"></i> Gelir Ekle
+      </button>
+    </div>
+  </div>
+
+  <div id="modal-debt-saved" class="fixed inset-0 z-[65] hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="absolute left-5 right-5 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-white rounded-3xl p-6 shadow-2xl">
+      <div class="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl">
+        <i class="fas fa-check"></i>
+      </div>
+      <h2 class="font-bold text-xl text-center text-gray-900 mt-3">Borç eklendi</h2>
+      <div class="mt-5 rounded-2xl bg-gray-50 divide-y divide-gray-200 px-4">
+        <div class="py-3"><p class="text-xs text-gray-500">Borç adı</p><p id="saved-debt-name" class="font-semibold text-gray-900 mt-0.5"></p></div>
+        <div class="py-3 grid grid-cols-2 gap-3">
+          <div><p class="text-xs text-gray-500">Ödeme tarihi</p><p id="saved-debt-date" class="font-semibold text-gray-900 mt-0.5"></p></div>
+          <div class="text-right"><p class="text-xs text-gray-500">Tutar</p><p id="saved-debt-amount" class="font-semibold text-gray-900 mt-0.5"></p></div>
+        </div>
+        <div id="saved-debt-installments-row" class="py-3 hidden"><p class="text-xs text-gray-500">Taksit bilgisi</p><p id="saved-debt-installments" class="font-semibold text-gray-900 mt-0.5"></p></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mt-5">
+        <button type="button" onclick="editSavedDebt()" class="rounded-xl border border-blue-200 bg-blue-50 py-3 font-semibold text-blue-700"><i class="fas fa-pen mr-1"></i> Düzenle</button>
+        <button type="button" onclick="closeDebtSavedModal()" class="rounded-xl bg-blue-600 py-3 font-semibold text-white">Tamam</button>
+      </div>
     </div>
   </div>
 
