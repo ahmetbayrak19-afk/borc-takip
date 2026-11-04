@@ -186,7 +186,7 @@
       </div>
       <form id="form-debt" class="p-5 space-y-4">
         <input type="hidden" id="debt-id" />
-        <div>
+        <div id="debt-name-field">
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Borç Adı / Kurum</label>
           <div class="flex gap-2">
             <input type="text" id="debt-name" required placeholder="Örn: Axess, Troy..." autocomplete="off"
@@ -196,13 +196,13 @@
             </button>
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
+        <div id="debt-amount-grid" class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-sm font-medium text-gray-600 mb-1.5">Tutar <span class="text-gray-400 font-normal text-xs">— her taksit</span></label>
             <input type="number" id="debt-total" required min="0.01" step="0.01" placeholder="2000"
                    class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
           </div>
-          <div>
+          <div id="debt-currency-field">
             <label class="block text-sm font-medium text-gray-600 mb-1.5">Para Birimi</label>
             <select id="debt-currency" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"></select>
           </div>
@@ -211,7 +211,7 @@
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Ödeme Tarihi</label>
           <input type="date" id="debt-due" required class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
         </div>
-        <div class="flex items-center gap-3 py-1">
+        <div id="debt-recurring-field" class="flex items-center gap-3 py-1">
           <input type="checkbox" id="debt-recurring" class="w-5 h-5 rounded text-blue-600" />
           <label for="debt-recurring" class="text-sm text-gray-700">Borcu tekrarla (taksitli)</label>
         </div>

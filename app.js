@@ -582,8 +582,13 @@ function selectedFilterMonthKey() {
 function openDebtModal(editId, installmentIndex, monthKey) {
   editingDebtId = editId || null;
   editingInstallmentIndex = Number.isInteger(installmentIndex) ? installmentIndex : null;
+  const installmentEdit = editingInstallmentIndex !== null;
   debtReturnMonth = monthKey || selectedMonthContext;
-  document.getElementById('debt-modal-title').textContent = editId ? 'Borcu Düzenle' : 'Yeni Borç Ekle';
+  document.getElementById('debt-modal-title').textContent = installmentEdit ? 'Taksiti Düzenle' : (editId ? 'Borcu Düzenle' : 'Yeni Borç Ekle');
+  document.getElementById('debt-name-field').classList.remove('hidden');
+  document.getElementById('debt-currency-field').classList.remove('hidden');
+  document.getElementById('debt-recurring-field').classList.remove('hidden');
+  document.getElementById('debt-amount-grid').className = 'grid grid-cols-2 gap-3';
   document.getElementById('debt-id').value = editId || '';
   document.getElementById('debt-name').value = '';
   document.getElementById('debt-total').value = '';
@@ -612,6 +617,11 @@ function openDebtModal(editId, installmentIndex, monthKey) {
         updateInstallmentPreview();
       }
       if (editingInstallmentIndex !== null && d.installmentCount > 1) {
+        document.getElementById('debt-name-field').classList.add('hidden');
+        document.getElementById('debt-currency-field').classList.add('hidden');
+        document.getElementById('debt-recurring-field').classList.add('hidden');
+        document.getElementById('installment-fields').classList.add('hidden');
+        document.getElementById('debt-amount-grid').className = 'grid grid-cols-1 gap-3';
         ['debt-name', 'debt-currency', 'debt-recurring', 'debt-installments', 'btn-pick-name'].forEach(function(id) {
           document.getElementById(id).disabled = true;
         });
