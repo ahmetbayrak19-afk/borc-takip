@@ -32,7 +32,7 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Create www directory and copy web assets
         run: |
@@ -40,6 +40,7 @@ jobs:
           npm run build
           mkdir -p www
           cp index.html app.js app.css www/
+          cp privacy.html terms.html www/
           mkdir -p www/vendor/fontawesome
           cp -R node_modules/@fortawesome/fontawesome-free/css www/vendor/fontawesome/
           cp -R node_modules/@fortawesome/fontawesome-free/webfonts www/vendor/fontawesome/
@@ -52,6 +53,12 @@ jobs:
         run: |
           npx cap add android || true
           npx cap sync android
+          sed -i -E 's/compileSdkVersion = [0-9]+/compileSdkVersion = 36/' android/variables.gradle
+          sed -i -E 's/targetSdkVersion = [0-9]+/targetSdkVersion = 36/' android/variables.gradle
+          sed -i -E "s/com.android.tools.build:gradle:[0-9.]+/com.android.tools.build:gradle:8.9.1/" android/build.gradle
+          sed -i -E 's#gradle-[0-9.]+-all.zip#gradle-8.11.1-all.zip#' android/gradle/wrapper/gradle-wrapper.properties
+          grep -E 'compileSdkVersion|targetSdkVersion' android/variables.gradle
+          grep 'com.android.tools.build:gradle' android/build.gradle
 
       - name: Add Google Drive authentication plugin
         run: |
@@ -88,11 +95,11 @@ jobs:
             echo "Icon script or resources/icon.png missing, skipping"
           fi
 
-      - name: Build Debug APK
+      - name: Build APK and Play App Bundle
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug bundleRelease --no-daemon --stacktrace
 
       - name: Sign APK with fixed key
         env:
@@ -101,12 +108,12 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "Fixed signing secrets are not configured; keeping the debug-signed APK."
-            exit 0
+            echo "Play paketi için sabit imza bilgileri zorunludur."
+            exit 1
           fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/borc-takip.jks"
           APK_INPUT=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          APKSIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           "$APKSIGNER" sign \
             --ks "$RUNNER_TEMP/borc-takip.jks" \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
@@ -116,6 +123,15 @@ jobs:
             "$APK_INPUT"
           "$APKSIGNER" verify --verbose android/app/build/outputs/apk/borc-takip-fixed.apk
           "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/borc-takip-fixed.apk
+          AAB_INPUT=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+          test -n "$AAB_INPUT"
+          jarsigner \
+            -keystore "$RUNNER_TEMP/borc-takip.jks" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -keypass "$ANDROID_KEYSTORE_PASSWORD" \
+            -signedjar android/app/build/outputs/bundle/borc-takip-play.aab \
+            "$AAB_INPUT" "$ANDROID_KEY_ALIAS"
+          jarsigner -verify -verbose -certs android/app/build/outputs/bundle/borc-takip-play.aab
 
       - name: Locate APK
         run: |
@@ -129,11 +145,16 @@ jobs:
             exit 1
           fi
           cp "$APK_PATH" ./borc-takip.apk
-          ls -lh borc-takip.apk
+          AAB_PATH="android/app/build/outputs/bundle/borc-takip-play.aab"
+          test -f "$AAB_PATH"
+          cp "$AAB_PATH" ./borc-takip-play.aab
+          ls -lh borc-takip.apk borc-takip-play.aab
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: borc-takip-apk
-          path: borc-takip.apk
+          name: borc-takip-yayin-paketi
+          path: |
+            borc-takip.apk
+            borc-takip-play.aab
           retention-days: 30
