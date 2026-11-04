@@ -2,6 +2,8 @@
 const STORAGE_DEBTS = 'borc_takip_debts';
 const STORAGE_INCOMES = 'borc_takip_incomes';
 const STORAGE_ADJUST = 'borc_takip_adjustments';
+const STORAGE_SYNC_META = 'borc_takip_sync_meta';
+const DRIVE_FILE_NAME = 'borc-takip-data.json';
 let debts = [];
 let incomes = [];
 let adjustments = [];
@@ -187,9 +189,9 @@ function loadData() {
   });
   loadHiddenNames();
 }
-function saveDebts() { localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts)); }
-function saveIncomes() { localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes)); }
-function saveAdjustments() { localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments)); }
+function saveDebts() { localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts)); markSyncDirty(); }
+function saveIncomes() { localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes)); markSyncDirty(); }
+function saveAdjustments() { localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments)); markSyncDirty(); }
 function installmentRemaining(debt, index) {
   const override = debt.installmentOverrides && debt.installmentOverrides[index];
   const full = (override && Number(override.amount)) || debt.installmentAmount || debt.totalAmount || 0;
@@ -896,6 +898,157 @@ function loadHiddenNames() {
 }
 function saveHiddenNames() {
   localStorage.setItem(STORAGE_HIDDEN_NAMES, JSON.stringify(hiddenNames));
+  markSyncDirty();
+}
+
+// ==================== GOOGLE DRIVE EŞİTLEME ====================
+let syncTimer = null;
+let syncRunning = false;
+function getSyncMeta() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_SYNC_META) || '{}'); }
+  catch (e) { return {}; }
+}
+function setSyncMeta(patch) {
+  const meta = Object.assign({}, getSyncMeta(), patch || {});
+  localStorage.setItem(STORAGE_SYNC_META, JSON.stringify(meta));
+  updateSyncUI();
+  return meta;
+}
+function markSyncDirty() {
+  const meta = getSyncMeta();
+  if (!meta.signedIn) return;
+  setSyncMeta({ dirty: true, updatedAt: new Date().toISOString() });
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(function() { syncNow(false); }, 1200);
+}
+function googleAuthPlugin() {
+  return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleDriveAuth;
+}
+function updateSyncUI() {
+  const status = document.getElementById('google-sync-status');
+  if (!status) return;
+  const meta = getSyncMeta();
+  const signIn = document.getElementById('btn-google-signin');
+  const sync = document.getElementById('btn-google-sync');
+  const signOut = document.getElementById('btn-google-signout');
+  if (!meta.signedIn) {
+    status.textContent = 'Giriş yapılmadı · Kayıtlar bu telefonda';
+    signIn.classList.remove('hidden'); sync.classList.add('hidden'); signOut.classList.add('hidden');
+    return;
+  }
+  signIn.classList.add('hidden'); sync.classList.remove('hidden'); signOut.classList.remove('hidden');
+  if (!navigator.onLine || meta.dirty) status.textContent = 'Çevrimdışı değişiklikler bekliyor';
+  else if (meta.lastSync) status.textContent = 'Eşitlendi · ' + new Date(meta.lastSync).toLocaleString('tr-TR');
+  else status.textContent = 'Google Drive bağlı';
+}
+function buildSyncPayload() {
+  const meta = getSyncMeta();
+  return {
+    version: 3,
+    updatedAt: meta.updatedAt || new Date().toISOString(),
+    debts: debts,
+    incomes: incomes,
+    adjustments: adjustments,
+    hiddenNames: hiddenNames
+  };
+}
+function applySyncPayload(data) {
+  if (!data || !Array.isArray(data.debts)) return false;
+  debts = data.debts || [];
+  incomes = data.incomes || [];
+  adjustments = data.adjustments || [];
+  hiddenNames = data.hiddenNames || [];
+  localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts));
+  localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes));
+  localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments));
+  localStorage.setItem(STORAGE_HIDDEN_NAMES, JSON.stringify(hiddenNames));
+  renderAll();
+  return true;
+}
+async function driveRequest(url, options, token) {
+  options = options || {};
+  options.headers = Object.assign({}, options.headers || {}, { Authorization: 'Bearer ' + token });
+  const response = await fetch(url, options);
+  if (!response.ok) throw new Error('Drive yanıtı: ' + response.status);
+  return response;
+}
+async function findDriveDataFile(token) {
+  const q = "name='" + DRIVE_FILE_NAME + "' and trashed=false";
+  const url = 'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=10&fields=files(id,name,modifiedTime)&q=' + encodeURIComponent(q);
+  const response = await driveRequest(url, {}, token);
+  const data = await response.json();
+  return data.files && data.files[0];
+}
+async function downloadDrivePayload(token, fileId) {
+  const response = await driveRequest('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?alt=media', {}, token);
+  return response.json();
+}
+async function uploadDrivePayload(token, fileId, payload) {
+  const boundary = 'borctakip_' + Date.now();
+  const metadata = fileId ? { name: DRIVE_FILE_NAME } : { name: DRIVE_FILE_NAME, parents: ['appDataFolder'] };
+  const body = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata) +
+    '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(payload) + '\r\n--' + boundary + '--';
+  const url = fileId
+    ? 'https://www.googleapis.com/upload/drive/v3/files/' + encodeURIComponent(fileId) + '?uploadType=multipart'
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  await driveRequest(url, { method: fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: body }, token);
+}
+async function googleSignIn() {
+  const plugin = googleAuthPlugin();
+  if (!plugin) { showToast('Google girişi bu sürümde kullanılamıyor'); return; }
+  try {
+    showToast('Google hesabı açılıyor…');
+    await plugin.signIn();
+    setSyncMeta({ signedIn: true, dirty: true, updatedAt: new Date().toISOString() });
+    await syncNow(true);
+  } catch (e) { showToast('Google girişi tamamlanamadı'); }
+}
+async function googleSignOut() {
+  const plugin = googleAuthPlugin();
+  try { if (plugin) await plugin.signOut(); } catch (e) {}
+  setSyncMeta({ signedIn: false, dirty: false });
+  showToast('Google hesabından çıkış yapıldı');
+}
+async function syncNow(manual) {
+  const meta = getSyncMeta();
+  const plugin = googleAuthPlugin();
+  if (!meta.signedIn || !plugin || syncRunning) return;
+  if (!navigator.onLine) { setSyncMeta({ dirty: true }); if (manual) showToast('İnternet gelince otomatik eşitlenecek'); return; }
+  syncRunning = true;
+  try {
+    if (manual) showToast('Eşitleniyor…');
+    const auth = await plugin.getToken();
+    const token = auth.accessToken;
+    const file = await findDriveDataFile(token);
+    const local = buildSyncPayload();
+    let remote = null;
+    if (file) {
+      try { remote = await downloadDrivePayload(token, file.id); } catch (e) { remote = null; }
+    }
+    const localTime = Date.parse(local.updatedAt || 0) || 0;
+    const remoteTime = Date.parse(remote && remote.updatedAt || 0) || 0;
+    if (remote && remoteTime > localTime && !meta.dirty) {
+      applySyncPayload(remote);
+      setSyncMeta({ updatedAt: remote.updatedAt, dirty: false, lastSync: new Date().toISOString() });
+    } else {
+      await uploadDrivePayload(token, file && file.id, local);
+      setSyncMeta({ dirty: false, lastSync: new Date().toISOString() });
+    }
+    if (manual) showToast('Google Drive ile eşitlendi');
+  } catch (e) {
+    console.log('sync', e);
+    setSyncMeta({ dirty: true });
+    if (manual) showToast('Eşitleme bekliyor · İnternet gelince yeniden denenecek');
+  } finally { syncRunning = false; }
+}
+async function restoreGoogleSession() {
+  const plugin = googleAuthPlugin();
+  if (!plugin) { updateSyncUI(); return; }
+  try {
+    await plugin.getToken();
+    setSyncMeta({ signedIn: true });
+    syncNow(false);
+  } catch (e) { setSyncMeta({ signedIn: false }); }
 }
 function isNameHidden(name) {
   return hiddenNames.indexOf(name) >= 0;
@@ -975,6 +1128,9 @@ function hideSplash() {
   }
 }
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+  window.Capacitor.Plugins.App.addListener('appStateChange', function(state) {
+    if (state && state.isActive) syncNow(false);
+  });
   window.Capacitor.Plugins.App.addListener('backButton', function(e) {
     const modals = ['modal-edit-scope', 'modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
     for (let i = 0; i < modals.length; i++) {
@@ -990,6 +1146,10 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
 }
 document.addEventListener('DOMContentLoaded', function() {
   loadData();
+  updateSyncUI();
+  restoreGoogleSession();
+  window.addEventListener('online', function() { updateSyncUI(); syncNow(false); });
+  window.addEventListener('offline', updateSyncUI);
   fillCurrencySelects();
   renderAll();
   scheduleDueNotifications();
