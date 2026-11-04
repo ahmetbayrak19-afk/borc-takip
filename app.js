@@ -227,21 +227,82 @@ function getActiveInstallments() {
   return result;
 }
 function calcSummaries() {
-  const items = getActiveInstallments();
-  let overdue = 0, today = 0, thisMonth = 0, next1 = 0, next2 = 0, next3 = 0, next4 = 0, next5 = 0, later = 0, total = 0;
-  items.forEach(function(item) {
-    total += item.amount;
-    if (isOverdue(item.dueDate)) overdue += item.amount;
-    if (isToday(item.dueDate)) today += item.amount;
-    if (isSameMonth(item.dueDate)) thisMonth += item.amount;
-    else if (isMonthOffset(item.dueDate, 1)) next1 += item.amount;
-    else if (isMonthOffset(item.dueDate, 2)) next2 += item.amount;
-    else if (isMonthOffset(item.dueDate, 3)) next3 += item.amount;
-    else if (isMonthOffset(item.dueDate, 4)) next4 += item.amount;
-    else if (isMonthOffset(item.dueDate, 5)) next5 += item.amount;
-    else if (!isOverdue(item.dueDate)) later += item.amount;
+  const totals = { overdue: {}, today: {}, thisMonth: {}, next1: {}, next2: {}, next3: {}, next4: {}, next5: {}, total: {} };
+  getActiveInstallments().forEach(function(item) {
+    const currency = item.currency;
+    const add = function(map) { map[currency] = (map[currency] || 0) + item.amount; };
+    add(totals.total);
+    if (isOverdue(item.dueDate)) add(totals.overdue);
+    if (isToday(item.dueDate)) add(totals.today);
+    if (isSameMonth(item.dueDate)) add(totals.thisMonth);
+    for (let offset = 1; offset <= 5; offset++) {
+      if (isMonthOffset(item.dueDate, offset)) add(totals['next' + offset]);
+    }
   });
-  return { overdue: overdue, today: today, thisMonth: thisMonth, next1: next1, next2: next2, next3: next3, next4: next4, next5: next5, later: later, total: total };
+  return totals;
+}
+const RATE_SOURCE = 'https://api.frankfurter.dev/v2/rates?base=TRY&quotes=USD,EUR,GBP,CHF,SAR,AED';
+const RATE_INTERVAL = 12 * 60 * 60 * 1000;
+let rateCache = null;
+let rateLoading = false;
+let lastRateAttempt = 0;
+function useTL() { return localStorage.getItem('borc_takip_convert_try') === '1'; }
+function totalInTL(map) {
+  if (!useTL() || !rateCache) return null;
+  let total = 0;
+  let converted = false;
+  for (const [code, amount] of Object.entries(map)) {
+    if (code === 'TRY') { total += amount; continue; }
+    const rate = rateCache.rates[code];
+    if (!Number.isFinite(rate) || rate <= 0) return null;
+    total += amount / rate;
+    converted = true;
+  }
+  return converted ? total : null;
+}
+function formatTotals(map) {
+  const converted = totalInTL(map);
+  if (converted !== null) return '≈ ' + formatMoney(converted, 'TRY');
+  return Object.keys(map).sort().map(function(code) {
+    return formatMoney(map[code], code);
+  }).join(' · ') || formatMoney(0, 'TRY');
+}
+function updateRateInfo() {
+  document.getElementById('convert-try').checked = useTL();
+  document.getElementById('rate-status').textContent = rateCache
+    ? ' · Verinin tarihi ' + rateCache.date.split('-').reverse().join('.')
+    : ' · Kur alınana kadar tutarlar ayrı gösterilir.';
+}
+async function refreshRates() {
+  const now = Date.now();
+  if (!useTL() || !navigator.onLine || rateLoading || now - (rateCache?.fetchedAt || 0) < RATE_INTERVAL || now - lastRateAttempt < 60000) return;
+  rateLoading = true;
+  lastRateAttempt = now;
+  try {
+    const response = await fetch(RATE_SOURCE);
+    if (!response.ok) return;
+    const rows = await response.json();
+    const rates = {};
+    const dates = [];
+    rows.forEach(function(row) {
+      if (row.base === 'TRY' && Number.isFinite(row.rate) && row.rate > 0 && /^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
+        rates[row.quote] = row.rate;
+        dates.push(row.date);
+      }
+    });
+    if (!dates.length) return;
+    rateCache = { rates: rates, date: dates.sort()[0], fetchedAt: now };
+    localStorage.setItem('borc_takip_rate_cache', JSON.stringify(rateCache));
+    updateRateInfo();
+    renderAll();
+  } catch (error) { console.log('rates', error); }
+  finally { rateLoading = false; }
+}
+function setTLConversion(enabled) {
+  localStorage.setItem('borc_takip_convert_try', enabled ? '1' : '0');
+  updateRateInfo();
+  renderAll();
+  refreshRates();
 }
 function getFilterMonthOffset(filter) {
   if (filter && filter.indexOf('month-') === 0) {
@@ -296,8 +357,14 @@ function renderBalance() {
   const offset = getFilterMonthOffset(currentFilter);
   const monthName = balanceMonthName(currentFilter);
   const monthKey = getMonthKeyForOffset(offset);
-  const incomeMap = getEffectiveIncomeByCurrency(monthKey);
-  const debtMap = getDebtByCurrencyForOffset(offset);
+  let incomeMap = getEffectiveIncomeByCurrency(monthKey);
+  let debtMap = getDebtByCurrencyForOffset(offset);
+  const combined = Object.assign({}, incomeMap, debtMap);
+  const converted = totalInTL(combined) !== null;
+  if (converted) {
+    incomeMap = { TRY: totalInTL(incomeMap) ?? incomeMap.TRY ?? 0 };
+    debtMap = { TRY: totalInTL(debtMap) ?? debtMap.TRY ?? 0 };
+  }
   const currencies = {};
   Object.keys(incomeMap).forEach(function(c) { currencies[c] = true; });
   Object.keys(debtMap).forEach(function(c) { currencies[c] = true; });
@@ -325,7 +392,7 @@ function renderBalance() {
     if (bal < 0) overallPositive = false;
     const p = document.createElement('p');
     p.className = 'text-xl font-bold mt-0.5';
-    p.textContent = formatMoney(Math.abs(bal), c) + (bal >= 0 ? ' artı' : ' eksi');
+    p.textContent = (converted ? '≈ ' : '') + formatMoney(Math.abs(bal), c) + (bal >= 0 ? ' artı' : ' eksi');
     lines.appendChild(p);
   });
   if (overallPositive) {
@@ -349,21 +416,21 @@ function renderSummaries() {
     const el = document.getElementById(id);
     if (el) el.textContent = val;
   };
-  setTxt('sum-overdue', formatMoney(s.overdue, 'TRY'));
-  setTxt('sum-today', formatMoney(s.today, 'TRY'));
+  setTxt('sum-overdue', formatTotals(s.overdue));
+  setTxt('sum-today', formatTotals(s.today));
   setTxt('lbl-this-month', monthNameTR(0));
-  setTxt('sum-this-month', formatMoney(s.thisMonth, 'TRY'));
+  setTxt('sum-this-month', formatTotals(s.thisMonth));
   setTxt('lbl-month-1', monthNameTR(1));
-  setTxt('sum-month-1', formatMoney(s.next1, 'TRY'));
+  setTxt('sum-month-1', formatTotals(s.next1));
   setTxt('lbl-month-2', monthNameTR(2));
-  setTxt('sum-month-2', formatMoney(s.next2, 'TRY'));
+  setTxt('sum-month-2', formatTotals(s.next2));
   setTxt('lbl-month-3', monthNameTR(3));
-  setTxt('sum-month-3', formatMoney(s.next3, 'TRY'));
+  setTxt('sum-month-3', formatTotals(s.next3));
   setTxt('lbl-month-4', monthNameTR(4));
-  setTxt('sum-month-4', formatMoney(s.next4, 'TRY'));
+  setTxt('sum-month-4', formatTotals(s.next4));
   setTxt('lbl-month-5', monthNameTR(5));
-  setTxt('sum-month-5', formatMoney(s.next5, 'TRY'));
-  setTxt('sum-total', formatMoney(s.total, 'TRY'));
+  setTxt('sum-month-5', formatTotals(s.next5));
+  setTxt('sum-total', formatTotals(s.total));
   const cards = document.querySelectorAll('#summary-grid > div');
   for (let i = 0; i < cards.length; i++) {
     const f = cards[i].getAttribute('data-filter');
@@ -435,6 +502,9 @@ function renderAll() {
   renderBalance();
   renderSummaries();
   renderDebts();
+  if (selectedMonthContext && !document.getElementById('modal-month-debts').classList.contains('hidden')) {
+    openMonthDebts(selectedMonthContext, monthTitleFromKey(selectedMonthContext));
+  }
 }
 function startPay(debtId, installmentIndex, mode) {
   const debt = debts.find(function(d) { return d.id === debtId; });
@@ -523,6 +593,9 @@ function openDebtModal(editId, installmentIndex, monthKey) {
   document.getElementById('installment-preview').classList.add('hidden');
   fillCurrencySelects();
   document.getElementById('debt-currency').value = 'TRY';
+  ['debt-name', 'debt-currency', 'debt-recurring', 'debt-installments', 'btn-pick-name'].forEach(function(id) {
+    document.getElementById(id).disabled = false;
+  });
   if (editId) {
     const d = debts.find(function(x) { return x.id === editId; });
     if (d) {
@@ -536,6 +609,11 @@ function openDebtModal(editId, installmentIndex, monthKey) {
       if (d.recurring || (d.installmentCount || 1) > 1) {
         document.getElementById('installment-fields').classList.remove('hidden');
         updateInstallmentPreview();
+      }
+      if (editingInstallmentIndex !== null && d.installmentCount > 1) {
+        ['debt-name', 'debt-currency', 'debt-recurring', 'debt-installments', 'btn-pick-name'].forEach(function(id) {
+          document.getElementById(id).disabled = true;
+        });
       }
     }
   }
@@ -596,16 +674,17 @@ function saveDebt(e) {
     currency: currency,
     createdAt: originalCreatedAt || new Date().toISOString()
   };
-  if (editingDebtId && editingInstallmentIndex !== null && count > 1) {
+  const original = debts.find(function(d) { return d.id === editingDebtId; });
+  if (original && editingInstallmentIndex !== null && original.installmentCount > 1) {
     pendingDebtSave = { debt: debt, installmentIndex: editingInstallmentIndex };
     const scopeInfo = document.getElementById('edit-scope-info');
-    scopeInfo.textContent = (editingInstallmentIndex + 1) + '/' + count + ' taksit · ' + formatMoney(amount, currency) + ' · ' + formatDateTR(due);
+    scopeInfo.textContent = (editingInstallmentIndex + 1) + '/' + original.installmentCount + ' taksit · ' + formatMoney(amount, original.currency) + ' · ' + formatDateTR(due);
     document.getElementById('modal-edit-scope').classList.remove('hidden');
     return;
   }
   persistDebt(debt, false);
 }
-function persistDebt(debt, wasEdited) {
+function persistDebt(debt, wasEdited, editedInstallment) {
   const editId = editingDebtId;
   if (editingDebtId) {
     const idx = debts.findIndex(function(d) { return d.id === editingDebtId; });
@@ -619,7 +698,9 @@ function persistDebt(debt, wasEdited) {
     saveHiddenNames();
   }
   const returnMonth = debtReturnMonth;
-  const detail = debt.name + ' · ' + formatDateTR(debt.startDate) + ' · ' + formatMoney(debt.installmentAmount, debt.currency) + ((debt.installmentCount || 1) > 1 ? ' · ' + debt.installmentCount + ' taksit' : '');
+  const date = editedInstallment?.dueDate || debt.startDate;
+  const amount = editedInstallment?.amount ?? debt.installmentAmount;
+  const detail = debt.name + ' · ' + formatDateTR(date) + ' · ' + formatMoney(amount, debt.currency) + ((debt.installmentCount || 1) > 1 ? ' · ' + debt.installmentCount + ' taksit' : '');
   closeDebtModal();
   renderAll();
   if (returnMonth) openMonthDebts(returnMonth, monthTitleFromKey(returnMonth));
@@ -636,22 +717,20 @@ function applyDebtEdit(scope) {
   const installmentIndex = pendingDebtSave.installmentIndex;
   const old = debts.find(function(d) { return d.id === draft.id; });
   if (!old) { cancelDebtScope(); return; }
-  if (scope === 'single') {
-    old.name = draft.name;
-    old.currency = draft.currency;
-    if (!old.installmentOverrides) old.installmentOverrides = {};
-    old.installmentOverrides[installmentIndex] = { amount: draft.installmentAmount, dueDate: draft.startDate };
-    draft.startDate = old.startDate;
-    draft.installmentAmount = old.installmentAmount;
-    draft.totalAmount = old.totalAmount;
-    Object.assign(draft, old);
-  } else {
-    draft.startDate = addMonths(draft.startDate, -installmentIndex);
-    draft.installmentOverrides = {};
+  const change = { amount: draft.installmentAmount, dueDate: draft.startDate };
+  const overrides = { ...old.installmentOverrides };
+  const updated = { ...old, installmentOverrides: overrides };
+  if (scope === 'all') {
+    updated.installmentAmount = change.amount;
+    updated.totalAmount = Math.round(change.amount * old.installmentCount * 100) / 100;
+    for (const index of Object.keys(overrides)) {
+      overrides[index] = { dueDate: overrides[index].dueDate };
+    }
   }
+  overrides[installmentIndex] = change;
   document.getElementById('modal-edit-scope').classList.add('hidden');
   pendingDebtSave = null;
-  persistDebt(draft, true);
+  persistDebt(updated, true, change);
 }
 function editDebt(id, installmentIndex) { openDebtModal(id, installmentIndex); }
 function deleteDebt(id) {
@@ -786,7 +865,7 @@ function openMonthDebts(monthKey, title) {
     el.innerHTML = '<div class="min-w-0"><p class="font-medium text-gray-900 truncate">' + escapeHtml(item.name) + '</p><p class="text-xs text-gray-500">' + formatDateTR(item.dueDate) + (item.installmentLabel ? ' · ' + item.installmentLabel : '') + '</p></div><div class="flex items-center gap-2 shrink-0"><p class="font-semibold text-gray-800">' + formatMoney(item.amount, item.currency) + '</p><button type="button" onclick="editDebtFromMonth(\'' + item.debtId + '\', ' + item.installmentIndex + ', \'' + monthKey + '\')" class="w-9 h-9 rounded-lg bg-gray-100 text-gray-600"><i class="fas fa-pen"></i></button></div>';
     list.appendChild(el);
   });
-  totalEl.textContent = 'Toplam: ' + Object.keys(byCur).map(function(c) { return formatMoney(byCur[c], c); }).join(' · ');
+  totalEl.textContent = 'Toplam: ' + formatTotals(byCur);
   document.getElementById('modal-month-debts').classList.remove('hidden');
 }
 function monthTitleFromKey(monthKey) {
@@ -802,8 +881,8 @@ function closeMonthDebtsModal() {
   document.getElementById('modal-month-debts').classList.add('hidden');
   selectedMonthContext = null;
 }
-function exportData() {
-  const data = { version: 2, debts: debts, incomes: incomes, adjustments: adjustments, hiddenNames: hiddenNames, exportedAt: new Date().toISOString() };
+function exportData(data) {
+  data = data || { version: 2, debts: debts, incomes: incomes, adjustments: adjustments, hiddenNames: hiddenNames, exportedAt: new Date().toISOString() };
   const json = JSON.stringify(data, null, 2);
   const fileName = 'borc-takip-' + todayStr() + '.json';
   closeSettings();
@@ -845,19 +924,54 @@ function downloadFallback(json, fileName) {
   URL.revokeObjectURL(url);
   showToast('İndirildi: ' + fileName);
 }
+const RECOVERY_KEY = 'borc_takip_recovery';
+function preserveRecovery(data) {
+  localStorage.setItem(RECOVERY_KEY, JSON.stringify(data));
+}
+function exportRecovery() {
+  const data = localStorage.getItem(RECOVERY_KEY);
+  if (data) exportData(JSON.parse(data));
+}
+function validateBackup(data) {
+  const validRecord = function(record) {
+    return record && typeof record === 'object' && typeof record.id === 'string' && /^[a-zA-Z0-9_-]+$/.test(record.id);
+  };
+  const validDate = function(value) { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)); };
+  const validCurrency = function(record) { return !record.currency || CURRENCIES.some(function(c) { return c.code === record.currency; }); };
+  const validAmount = function(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0; };
+  if (!data || !Array.isArray(data.debts) || !data.debts.every(function(d) {
+    return validRecord(d) && validCurrency(d) && typeof d.name === 'string' && validDate(d.startDate)
+      && validAmount(d.installmentAmount ?? d.totalAmount)
+      && Number.isInteger(d.installmentCount ?? 1) && (d.installmentCount ?? 1) >= 1 && (d.installmentCount ?? 1) <= 120
+      && (!d.installmentOverrides || Object.values(d.installmentOverrides).every(function(o) {
+        return o && (o.amount == null || validAmount(o.amount)) && (o.dueDate == null || validDate(o.dueDate));
+      }))
+      && (!d.partials || Object.values(d.partials).every(validAmount));
+  })) throw new Error('Geçersiz borç kayıtları');
+  if (!(data.incomes === undefined || Array.isArray(data.incomes) && data.incomes.every(function(i) {
+    return validRecord(i) && validCurrency(i) && typeof i.name === 'string' && validAmount(i.amount)
+      && (i.type !== 'once' || validDate(i.date || i.startMonth + '-01'));
+  })) || !(data.adjustments === undefined || Array.isArray(data.adjustments) && data.adjustments.every(function(a) {
+    return validRecord(a) && validCurrency(a) && validAmount(a.amount) && /^\d{4}-\d{2}$/.test(a.monthKey);
+  })) || !(data.hiddenNames === undefined || Array.isArray(data.hiddenNames) && data.hiddenNames.every(function(n) { return typeof n === 'string'; }))) {
+    throw new Error('Geçersiz yedek kayıtları');
+  }
+  return { ...data, incomes: data.incomes || [], adjustments: data.adjustments || [], hiddenNames: data.hiddenNames || [] };
+}
 function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
-      const data = JSON.parse(e.target.result);
-      if (data.debts) debts = data.debts;
-      if (data.incomes) incomes = data.incomes;
-      if (data.adjustments) adjustments = data.adjustments;
-      if (Array.isArray(data.hiddenNames)) hiddenNames = data.hiddenNames;
-      saveDebts(); saveIncomes(); saveAdjustments();
-      saveHiddenNames();
+      const data = validateBackup(JSON.parse(e.target.result));
+      if (hasLocalSyncData()) {
+        if (!confirm('Dosyadaki ' + data.debts.length + ' borç ve ' + data.incomes.length + ' gelir kaydı telefondaki mevcut kayıtların yerini alacak. Devam edilsin mi?')) return;
+        preserveRecovery(buildSyncPayload());
+      }
+      applySyncPayload(data);
+      markSyncDirty();
+      updateSyncUI();
       showToast('Veriler yüklendi');
       renderAll();
     } catch (err) { showToast('Geçersiz dosya'); }
@@ -867,14 +981,13 @@ function importData(event) {
   closeSettings();
 }
 function clearAllData() {
-  if (!confirm('TÜM veriler silinecek. Emin misiniz?')) return;
-  debts = []; incomes = []; adjustments = [];
-  hiddenNames = [];
-  saveDebts(); saveIncomes(); saveAdjustments();
-  saveHiddenNames();
-  showToast('Tüm veriler silindi');
-  renderAll();
-  closeSettings();
+  if (syncRunning) { showToast('Eşitlemenin bitmesini bekle'); return; }
+  if (!confirm('Telefondaki kayıtlar silinecek, Drive yedeği korunacak. Otomatik eşitleme duraklatılacak. Devam edilsin mi?')) return;
+  setSyncMeta({ paused: true, dirty: false, baseline: null, lastSync: null });
+  localStorage.removeItem(RECOVERY_KEY);
+  applySyncPayload({ debts: [], incomes: [], adjustments: [], hiddenNames: [] });
+  updateSyncUI();
+  showToast('Telefon kayıtları silindi');
 }
 function requestNotifPermission() {
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
@@ -915,6 +1028,7 @@ function saveHiddenNames() {
 // ==================== GOOGLE DRIVE EŞİTLEME ====================
 let syncTimer = null;
 let syncRunning = false;
+let syncAgain = false;
 function getSyncMeta() {
   try { return JSON.parse(localStorage.getItem(STORAGE_SYNC_META) || '{}'); }
   catch (e) { return {}; }
@@ -927,8 +1041,8 @@ function setSyncMeta(patch) {
 }
 function markSyncDirty() {
   const meta = getSyncMeta();
-  if (!meta.signedIn) return;
-  setSyncMeta({ dirty: true, updatedAt: new Date().toISOString() });
+  setSyncMeta({ dirty: true, revision: (meta.revision || 0) + 1, updatedAt: new Date().toISOString() });
+  if (!meta.signedIn || meta.paused) return;
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(function() { syncNow(false); }, 1200);
 }
@@ -942,13 +1056,20 @@ function updateSyncUI() {
   const signIn = document.getElementById('btn-google-signin');
   const sync = document.getElementById('btn-google-sync');
   const signOut = document.getElementById('btn-google-signout');
+  document.getElementById('btn-drive-delete')?.classList.toggle('hidden', !meta.signedIn);
+  document.getElementById('btn-export-recovery')?.classList.toggle('hidden', !localStorage.getItem(RECOVERY_KEY));
+  document.getElementById('sync-conflict')?.classList.toggle('hidden', !meta.conflict || !meta.signedIn || meta.paused);
   if (!meta.signedIn) {
     status.textContent = 'Giriş yapılmadı · Kayıtlar bu telefonda';
     signIn.classList.remove('hidden'); sync.classList.add('hidden'); signOut.classList.add('hidden');
     return;
   }
   signIn.classList.add('hidden'); sync.classList.remove('hidden'); signOut.classList.remove('hidden');
-  if (!navigator.onLine || meta.dirty) status.textContent = 'Çevrimdışı değişiklikler bekliyor';
+  sync.textContent = meta.paused ? 'Eşitlemeyi başlat' : 'Şimdi eşitle';
+  if (meta.paused) status.textContent = 'Otomatik eşitleme duraklatıldı';
+  else if (meta.conflict) status.textContent = 'Telefon ve Drive kayıtları farklı';
+  else if (meta.error) status.textContent = 'Eşitleme başarısız · Yeniden dene';
+  else if (!navigator.onLine || meta.dirty) status.textContent = 'Eşitleme bekliyor';
   else if (meta.lastSync) status.textContent = 'Eşitlendi · ' + new Date(meta.lastSync).toLocaleString('tr-TR');
   else status.textContent = 'Google Drive bağlı';
 }
@@ -976,7 +1097,9 @@ function applySyncPayload(data) {
   localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes));
   localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments));
   localStorage.setItem(STORAGE_HIDDEN_NAMES, JSON.stringify(hiddenNames));
+  loadData();
   renderAll();
+  scheduleDueNotifications();
   return true;
 }
 async function driveRequest(url, options, token) {
@@ -986,12 +1109,19 @@ async function driveRequest(url, options, token) {
   if (!response.ok) throw new Error('Drive yanıtı: ' + response.status);
   return response;
 }
-async function findDriveDataFile(token) {
-  const q = "name='" + DRIVE_FILE_NAME + "' and trashed=false";
-  const url = 'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=10&fields=files(id,name,modifiedTime)&q=' + encodeURIComponent(q);
-  const response = await driveRequest(url, {}, token);
-  const data = await response.json();
-  return data.files && data.files[0];
+async function findDriveFiles(token, all) {
+  const q = "name='" + DRIVE_FILE_NAME + "'";
+  const url = 'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&orderBy=modifiedTime%20desc&fields=nextPageToken,files(id,version)&q=' + encodeURIComponent(q);
+  const files = [];
+  let page;
+  do {
+    const response = await driveRequest(url + (page ? '&pageToken=' + encodeURIComponent(page) : ''), {}, token);
+    const data = await response.json();
+    if (!Array.isArray(data.files)) throw new Error('Drive yedek listesi okunamadı');
+    files.push(...data.files);
+    page = data.nextPageToken;
+  } while (page && (all || !files.length));
+  return files;
 }
 async function downloadDrivePayload(token, fileId) {
   const response = await driveRequest('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?alt=media', {}, token);
@@ -1005,7 +1135,8 @@ async function uploadDrivePayload(token, fileId, payload) {
   const url = fileId
     ? 'https://www.googleapis.com/upload/drive/v3/files/' + encodeURIComponent(fileId) + '?uploadType=multipart'
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-  await driveRequest(url, { method: fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: body }, token);
+  const response = await driveRequest(url + '&fields=id,version', { method: fileId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + boundary }, body: body }, token);
+  return response.json();
 }
 function openDrivePermission() {
   document.getElementById('modal-drive-permission').classList.remove('hidden');
@@ -1033,69 +1164,130 @@ function googleSignIn() {
 async function continueGoogleSignIn() {
   closeDrivePermission();
   const plugin = googleAuthPlugin();
-  if (!plugin) { showToast('Google girişi bu sürümde kullanılamıyor'); return; }
+  if (!plugin || syncRunning) { showToast('Google girişi şu anda kullanılamıyor'); return; }
+  syncRunning = true;
+  let connected = false;
   try {
     showToast('Google hesabı açılıyor…');
-    await plugin.signIn();
-    const hasLocalData = hasLocalSyncData();
-    setSyncMeta({
-      signedIn: true,
-      dirty: hasLocalData,
-      updatedAt: hasLocalData ? new Date().toISOString() : null
-    });
-    await syncNow(true);
+    const auth = await plugin.signIn();
+    const meta = getSyncMeta();
+    if (!auth.email) throw new Error('Google hesabı belirlenemedi');
+    if (meta.account !== auth.email) {
+      if (hasLocalSyncData() && !confirm('Bu telefondaki kayıtlar seçtiğin Google hesabıyla eşitlenebilir. Bu hesabı bağlamak istiyor musun?')) {
+        await plugin.signOut();
+        return;
+      }
+      setSyncMeta({ account: auth.email, baseline: null, conflict: null, lastSync: null });
+    }
+    setSyncMeta({ signedIn: true, paused: false, error: false });
+    connected = true;
   } catch (e) { showToast('Google girişi tamamlanamadı'); }
+  finally { syncRunning = false; }
+  if (connected) await syncNow(true);
 }
 async function googleSignOut() {
   const plugin = googleAuthPlugin();
-  try { if (plugin) await plugin.signOut(); } catch (e) {}
-  setSyncMeta({ signedIn: false, dirty: false });
-  showToast('Google hesabından çıkış yapıldı');
-}
-async function syncNow(manual) {
-  const meta = getSyncMeta();
-  const plugin = googleAuthPlugin();
-  if (!meta.signedIn || !plugin || syncRunning) return;
-  if (!navigator.onLine) { setSyncMeta({ dirty: true }); if (manual) showToast('İnternet gelince otomatik eşitlenecek'); return; }
+  if (syncRunning) { showToast('Eşitlemenin bitmesini bekle'); return; }
   syncRunning = true;
   try {
-    if (manual) showToast('Eşitleniyor…');
+    if (plugin) await plugin.signOut();
+    setSyncMeta({ signedIn: false, paused: true, conflict: null });
+    showToast('Google hesabından çıkış yapıldı');
+  } catch (e) { showToast('Google hesabından çıkış yapılamadı'); }
+  finally { syncRunning = false; }
+}
+function backupContents(data) {
+  return JSON.stringify([data.debts, data.incomes, data.adjustments, data.hiddenNames]);
+}
+function driveVersion(file) {
+  if (!file?.id || !file.version) throw new Error('Drive yedek sürümü okunamadı');
+  return file.id + ':' + file.version;
+}
+async function syncNow(manual, choice) {
+  let meta = getSyncMeta();
+  const plugin = googleAuthPlugin();
+  if (!meta.signedIn || !plugin || (meta.paused && !manual)) return;
+  if (syncRunning) { syncAgain = true; return; }
+  if (!navigator.onLine) { if (manual) showToast('Eşitlemek için internet bağlantısı gerekiyor'); return; }
+  syncRunning = true;
+  try {
+    if (meta.paused) setSyncMeta({ paused: false, baseline: null, conflict: null });
     const auth = await plugin.getToken();
+    if (!auth.email || !auth.accessToken || (meta.account && meta.account !== auth.email)) {
+      throw new Error('Google hesabını yeniden bağla');
+    }
     const token = auth.accessToken;
-    const file = await findDriveDataFile(token);
+    const [file] = await findDriveFiles(token, false);
+    const remote = file ? validateBackup(await downloadDrivePayload(token, file.id)) : null;
+    const version = file ? driveVersion(file) : null;
+    meta = getSyncMeta();
     const local = buildSyncPayload();
-    let remote = null;
-    if (file) {
-      try { remote = await downloadDrivePayload(token, file.id); } catch (e) { remote = null; }
+    const same = remote && backupContents(remote) === backupContents(local);
+    const remoteChanged = version !== meta.baseline;
+    const localExists = hasLocalSyncData();
+    const localChanged = meta.baseline ? meta.dirty : localExists;
+    if (!remote && meta.baseline) {
+      setSyncMeta({ paused: true, baseline: null, conflict: null, lastSync: null });
+      showToast('Drive yedeği bulunamadı · Eşitleme duraklatıldı');
+      return;
     }
-    const localTime = Date.parse(local.updatedAt || 0) || 0;
-    const remoteTime = Date.parse(remote && remote.updatedAt || 0) || 0;
-    const emptyFreshInstall = !hasLocalSyncData();
-    if (remote && (emptyFreshInstall || (remoteTime > localTime && !meta.dirty))) {
-      applySyncPayload(remote);
-      setSyncMeta({ updatedAt: remote.updatedAt, dirty: false, lastSync: new Date().toISOString() });
+    if (remote && !same && localChanged && remoteChanged) {
+      if (!choice || meta.conflict !== version) {
+        setSyncMeta({ conflict: version, error: false });
+        if (manual) { openSettings(); showToast('Kullanmak istediğin kayıtları seç'); }
+        return;
+      }
+      preserveRecovery(choice === 'drive' ? local : remote);
     } else {
-      await uploadDrivePayload(token, file && file.id, local);
-      setSyncMeta({ dirty: false, lastSync: new Date().toISOString() });
+      choice = null;
     }
-    if (manual) showToast('Google Drive ile eşitlendi');
+    let baseline = version;
+    let restored = false;
+    if (remote && !same && (choice === 'drive' || (!localChanged && remoteChanged))) {
+      applySyncPayload(remote);
+      restored = true;
+    } else if (!same && ((remote && localChanged) || (!remote && localExists))) {
+      baseline = driveVersion(await uploadDrivePayload(token, file?.id, local));
+    }
+    const editedWhileUploading = meta.revision !== getSyncMeta().revision;
+    setSyncMeta({ account: auth.email, baseline: baseline, conflict: null, dirty: editedWhileUploading, error: false, lastSync: new Date().toISOString() });
+    syncAgain = syncAgain || editedWhileUploading;
+    if (manual || restored) showToast(restored ? 'Drive yedeği geri yüklendi' : 'Google Drive ile eşitlendi');
   } catch (e) {
     console.log('sync', e);
-    setSyncMeta({ dirty: true });
-    if (manual) showToast('Eşitleme bekliyor · İnternet gelince yeniden denenecek');
+    setSyncMeta({ error: true });
+    if (manual) showToast('Eşitleme yapılamadı · Bağlantıyı ve Drive iznini kontrol et');
+  } finally {
+    syncRunning = false;
+    if (syncAgain) {
+      syncAgain = false;
+      syncNow(false);
+    }
+  }
+}
+async function deleteDriveBackup() {
+  const meta = getSyncMeta();
+  const plugin = googleAuthPlugin();
+  if (!meta.signedIn || !plugin || syncRunning) { showToast('Eşitlemenin bitmesini bekle'); return; }
+  if (!navigator.onLine) { showToast('Drive yedeğini silmek için internete bağlan'); return; }
+  if (!confirm('Bağlı Google hesabındaki Borç Takip yedeği kalıcı olarak silinecek. Telefonda bulunan kayıtlar korunacak ve otomatik eşitleme duraklatılacak. Devam edilsin mi?')) return;
+  syncRunning = true;
+  setSyncMeta({ paused: true, baseline: null, conflict: null, lastSync: null });
+  try {
+    const auth = await plugin.getToken();
+    if (!auth.email || (meta.account && meta.account !== auth.email)) throw new Error('Google hesabını yeniden bağla');
+    const files = await findDriveFiles(auth.accessToken, true);
+    for (const file of files) {
+      await driveRequest('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(file.id), { method: 'DELETE' }, auth.accessToken);
+    }
+    showToast(files.length ? 'Drive yedeği silindi' : 'Drive yedeği bulunamadı');
+  } catch (e) {
+    showToast('Drive yedeğinin silindiği doğrulanamadı');
   } finally { syncRunning = false; }
 }
-async function restoreGoogleSession() {
-  const plugin = googleAuthPlugin();
-  if (!plugin) { updateSyncUI(); showSyncWelcomeIfNeeded(); return; }
-  try {
-    await plugin.getToken();
-    setSyncMeta({ signedIn: true });
-    syncNow(false);
-  } catch (e) {
-    setSyncMeta({ signedIn: false });
-    showSyncWelcomeIfNeeded();
-  }
+function restoreGoogleSession() {
+  showSyncWelcomeIfNeeded();
+  syncNow(false);
 }
 function isNameHidden(name) {
   return hiddenNames.indexOf(name) >= 0;
@@ -1176,7 +1368,7 @@ function hideSplash() {
 }
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
   window.Capacitor.Plugins.App.addListener('appStateChange', function(state) {
-    if (state && state.isActive) syncNow(false);
+    if (state && state.isActive) { syncNow(false); refreshRates(); }
   });
   window.Capacitor.Plugins.App.addListener('backButton', function(e) {
     const modals = ['modal-drive-permission', 'modal-sync-welcome', 'modal-edit-scope', 'modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
@@ -1193,9 +1385,12 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
 }
 document.addEventListener('DOMContentLoaded', function() {
   loadData();
+  try { rateCache = JSON.parse(localStorage.getItem('borc_takip_rate_cache')); } catch (e) { rateCache = null; }
+  updateRateInfo();
+  refreshRates();
   updateSyncUI();
   restoreGoogleSession();
-  window.addEventListener('online', function() { updateSyncUI(); syncNow(false); });
+  window.addEventListener('online', function() { updateSyncUI(); syncNow(false); refreshRates(); });
   window.addEventListener('offline', updateSyncUI);
   fillCurrencySelects();
   renderAll();

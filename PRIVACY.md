@@ -14,13 +14,17 @@ Uygulama, kullanıcının Google Drive'daki normal dosyalarını, fotoğrafları
 
 Google ile giriş isteğe bağlıdır. Uygulama yalnızca eşitleme için gerekli olan `https://www.googleapis.com/auth/drive.appdata` iznini talep eder. Kullanıcı giriş yapmadan uygulamayı yalnızca cihazındaki yerel kayıtlarla kullanabilir.
 
+## Döviz kurları
+
+Kullanıcı TL karşılığı seçeneğini açarsa uygulama Frankfurter üzerinden genel döviz kurlarını alır. Kur isteği borç, gelir veya Google hesabı bilgilerini içermez.
+
 ## Veri paylaşımı
 
 Kullanıcı verileri reklam amacıyla satılmaz, kiralanmaz veya üçüncü taraflarla paylaşılmaz. Firebase veya uygulama sahibine ait ortak bir veritabanı kullanılmaz.
 
 ## Veri silme
 
-Kullanıcı, uygulama içinden yerel kayıtlarını silebilir ve Google hesabı bağlantısını kaldırabilir. Google Drive'daki uygulama verileri, kullanıcının Google hesabı ayarlarından Borç Takip erişimi kaldırılarak yönetilebilir.
+Kullanıcı, Ayarlar’dan telefondaki kayıtları ve Google Drive yedeğini ayrı işlemlerle silebilir. Her iki silme işlemi de otomatik eşitlemeyi duraklatır. Google hesabı bağlantısı ayrıca kaldırılabilir.
 
 ## Güvenlik
 
