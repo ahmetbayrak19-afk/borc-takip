@@ -106,6 +106,7 @@ jobs:
             --out android/app/build/outputs/apk/borc-takip-fixed.apk \
             "$APK_INPUT"
           "$APKSIGNER" verify --verbose android/app/build/outputs/apk/borc-takip-fixed.apk
+          "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/borc-takip-fixed.apk
 
       - name: Locate APK
         run: |
