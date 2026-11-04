@@ -953,6 +953,9 @@ function buildSyncPayload() {
     hiddenNames: hiddenNames
   };
 }
+function hasLocalSyncData() {
+  return debts.length > 0 || incomes.length > 0 || adjustments.length > 0 || hiddenNames.length > 0;
+}
 function applySyncPayload(data) {
   if (!data || !Array.isArray(data.debts)) return false;
   debts = data.debts || [];
@@ -1024,7 +1027,12 @@ async function continueGoogleSignIn() {
   try {
     showToast('Google hesabı açılıyor…');
     await plugin.signIn();
-    setSyncMeta({ signedIn: true, dirty: true, updatedAt: new Date().toISOString() });
+    const hasLocalData = hasLocalSyncData();
+    setSyncMeta({
+      signedIn: true,
+      dirty: hasLocalData,
+      updatedAt: hasLocalData ? new Date().toISOString() : null
+    });
     await syncNow(true);
   } catch (e) { showToast('Google girişi tamamlanamadı'); }
 }
@@ -1052,7 +1060,8 @@ async function syncNow(manual) {
     }
     const localTime = Date.parse(local.updatedAt || 0) || 0;
     const remoteTime = Date.parse(remote && remote.updatedAt || 0) || 0;
-    if (remote && remoteTime > localTime && !meta.dirty) {
+    const emptyFreshInstall = !hasLocalSyncData();
+    if (remote && (emptyFreshInstall || (remoteTime > localTime && !meta.dirty))) {
       applySyncPayload(remote);
       setSyncMeta({ updatedAt: remote.updatedAt, dirty: false, lastSync: new Date().toISOString() });
     } else {
