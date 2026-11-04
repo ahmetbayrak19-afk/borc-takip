@@ -178,8 +178,8 @@
 
   <div id="modal-debt" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/40" onclick="closeDebtModal()"></div>
-    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[92vh] overflow-y-auto slide-up">
-      <div class="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between rounded-t-3xl">
+    <div class="absolute bottom-0 left-0 right-0 bg-[#f6f9ff] rounded-t-3xl max-h-[92vh] overflow-y-auto slide-up">
+      <div class="sticky top-0 bg-[#f6f9ff] border-b border-blue-100 px-5 py-4 flex items-center justify-between rounded-t-3xl">
         <button onclick="closeDebtModal()" class="text-gray-500 text-lg"><i class="fas fa-arrow-left"></i></button>
         <h2 id="debt-modal-title" class="font-bold text-lg">Yeni Borç Ekle</h2>
         <div class="w-6"></div>
@@ -230,8 +230,8 @@
 
   <div id="modal-income" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/40" onclick="closeIncomeModal()"></div>
-    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl slide-up">
-      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div class="absolute bottom-0 left-0 right-0 bg-[#f5fbf7] rounded-t-3xl slide-up">
+      <div class="px-5 py-4 border-b border-emerald-100 flex items-center justify-between">
         <button onclick="closeIncomeModal()" class="text-gray-500"><i class="fas fa-arrow-left"></i></button>
         <h2 class="font-bold text-lg">Gelir Ekle</h2>
         <div class="w-6"></div>
@@ -239,32 +239,32 @@
       <form id="form-income" class="p-5 space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Gelir Adı</label>
-          <input type="text" id="income-name" required placeholder="Örn: Maaş..." class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+          <input type="text" id="income-name" required placeholder="Örn: Maaş..." class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Gelir türü</label>
           <div class="grid grid-cols-2 gap-2">
-            <button type="button" id="income-type-recurring" onclick="setIncomeType('recurring')" class="py-3 px-2 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-semibold">Düzenli</button>
+            <button type="button" id="income-type-recurring" onclick="setIncomeType('recurring')" class="py-3 px-2 rounded-xl border-2 border-emerald-500 bg-emerald-50 text-emerald-700 text-sm font-semibold">Düzenli</button>
             <button type="button" id="income-type-once" onclick="setIncomeType('once')" class="py-3 px-2 rounded-xl border-2 border-gray-200 bg-white text-gray-600 text-sm font-medium">Tek seferlik</button>
           </div>
           <p id="income-type-hint" class="text-xs text-gray-500 mt-2">Maaş, kira gibi. Girdiğin aydan itibaren her aya yansır.</p>
         </div>
         <div id="income-date-wrap" class="hidden">
           <label class="block text-sm font-medium text-gray-600 mb-1.5">Tarih</label>
-          <input type="date" id="income-date" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+          <input type="date" id="income-date" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none" />
           <p class="text-xs text-gray-500 mt-1.5">Sadece seçtiğin ayın gelirine ve üstteki toplama eklenir.</p>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label id="income-amount-label" class="block text-sm font-medium text-gray-600 mb-1.5">Aylık Tutar</label>
-            <input type="number" id="income-amount" required min="0.01" step="0.01" placeholder="0,00" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" />
+            <input type="number" id="income-amount" required min="0.01" step="0.01" placeholder="0,00" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none" />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-600 mb-1.5">Para Birimi</label>
-            <select id="income-currency" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none bg-white"></select>
+            <select id="income-currency" class="w-full border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none bg-white"></select>
           </div>
         </div>
-        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl">Kaydet</button>
+        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl">Kaydet</button>
       </form>
     </div>
   </div>

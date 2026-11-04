@@ -785,10 +785,10 @@ function setIncomeType(type) {
   const dateEl = document.getElementById('income-date');
   if (rec && once) {
     if (incomeType === 'recurring') {
-      rec.className = 'py-3 px-2 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-semibold';
+      rec.className = 'py-3 px-2 rounded-xl border-2 border-emerald-500 bg-emerald-50 text-emerald-700 text-sm font-semibold';
       once.className = 'py-3 px-2 rounded-xl border-2 border-gray-200 bg-white text-gray-600 text-sm font-medium';
     } else {
-      once.className = 'py-3 px-2 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-semibold';
+      once.className = 'py-3 px-2 rounded-xl border-2 border-emerald-500 bg-emerald-50 text-emerald-700 text-sm font-semibold';
       rec.className = 'py-3 px-2 rounded-xl border-2 border-gray-200 bg-white text-gray-600 text-sm font-medium';
     }
   }
