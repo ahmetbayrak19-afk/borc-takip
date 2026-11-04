@@ -321,6 +321,33 @@
     </div>
   </div>
 
+  <div id="modal-sync-welcome" class="fixed inset-0 z-[60] hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="absolute left-5 right-5 top-1/2 -translate-y-1/2 bg-white rounded-3xl p-6 shadow-2xl">
+      <div class="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+        <i class="fab fa-google-drive text-3xl text-blue-600"></i>
+      </div>
+      <h2 class="font-bold text-xl text-gray-900">Borçların kaybolmasın</h2>
+      <p class="text-sm text-gray-600 mt-2 leading-6">Kayıtlarını kendi Google Drive hesabında güvenle saklayabilir ve başka telefonda geri getirebilirsin. Değişiklikler internet olduğunda otomatik eşitlenir.</p>
+      <button onclick="acceptSyncWelcome()" class="w-full mt-5 rounded-xl bg-blue-600 text-white py-3 font-semibold">Google Drive ile eşitle</button>
+      <button onclick="dismissSyncWelcome()" class="w-full mt-2 py-3 text-gray-500 font-medium">Şimdilik kullanma</button>
+      <p class="text-[11px] text-center text-gray-400 mt-2">İsteğe bağlıdır. Daha sonra Ayarlar’dan açabilirsin.</p>
+    </div>
+  </div>
+
+  <div id="modal-drive-permission" class="fixed inset-0 z-[70] hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="absolute left-5 right-5 top-1/2 -translate-y-1/2 bg-white rounded-3xl p-6 shadow-2xl">
+      <div class="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
+        <i class="fas fa-check-square text-2xl text-amber-600"></i>
+      </div>
+      <h2 class="font-bold text-xl text-gray-900">Bir kutuyu işaretlemen gerekiyor</h2>
+      <p class="text-sm text-gray-600 mt-2 leading-6">Bir sonraki Google ekranında <b>“Google Drive’ınızda kendi yapılandırma verilerini görme, oluşturma ve silme”</b> izninin yanındaki kutuyu işaretle. Bu kutu işaretlenmezse eşitleme çalışmaz.</p>
+      <button onclick="continueGoogleSignIn()" class="w-full mt-5 rounded-xl bg-blue-600 text-white py-3 font-semibold">Anladım, Google’a devam et</button>
+      <button onclick="closeDrivePermission()" class="w-full mt-2 py-3 text-gray-500 font-medium">İptal</button>
+    </div>
+  </div>
+
   <div id="modal-months" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/40" onclick="closeMonthsModal()"></div>
     <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto slide-up">
