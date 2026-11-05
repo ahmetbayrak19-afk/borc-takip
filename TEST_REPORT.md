@@ -1,131 +1,71 @@
-# Borç Takip — Dil desteği ve senaryo test raporu
+# Borç Takip — Düzeltme ve regresyon test raporu
 
-İnceleme tarihi: 5 Kasım 2026. Kaynak başlangıcı: `05ee661c77e815ae444f624984ac0301f4ff430a`.
-Gerçek kullanıcı kayıtları ve gerçek Google hesapları kullanılmadı; bütün örnek kayıtlar test için üretildi.
+Tarih: 5 Kasım 2026. Düzeltmelerin kaynak başlangıcı: 2547750cbe1c7eebd91ac83c678808a5a6043051.
+Önceki incelemede doğrulanan A01–A10 hataları düzeltildi. Formların arkasındaki sayfanın kaymasını önleyen S01 de eklendi.
+Testlerde üretilmiş örnek kayıtlar kullanıldı.
 
-## Eklenen dil desteği
+## Düzeltmeler
 
-- Ayarlar → Dil: Türkçe, English, Deutsch, Русский.
-- Seçim anında uygulanır ve aynı cihazda uygulama yeniden açıldığında korunur. Varsayılan Türkçedir.
-- Ana ekran, formlar, doğrulama mesajları, silme/geri alma onayları, ödeme arşivi, Google Drive açıklamaları ve uygulama içindeki gizlilik bilgileri çevrilir.
-- Para ve tarih gösterimi, ay/yıl adları ve ödeme zamanı seçilen dile göre biçimlenir. Para birimi otomatik değiştirilmez.
-- Kullanıcının girdiği borç/gelir adları, mevcut kayıtlar, taksit sayısı, para birimi ve ISO tarih verileri değiştirilmez.
-- Dil tercihi cihaz ayarıdır; Google yedeğine taşınmaz ve hesap değiştirmekten etkilenmez.
-- Açık formdaki yazılar, seçili ay ve bekleyen ödeme işlemi dil değişikliğinde korunur.
-- Uzayan Almanca/Rusça metinler için kaydırılabilir form alanları, dar ekranda sarılma ve alt buton yüksekliğine göre hesaplanan liste boşluğu eklendi.
-- Android paketleme adımına `i18n.js` ve derlemeden önce `npm test` eklendi.
-- Google’ın kendi giriş ekranı, Android’in sistem diyalogları ve bağlantı verilen web politikaları uygulama içi sözlükle çevrilmez.
+| Kod | Sonuç |
+|---|---|
+| A01 | Eski ödenmiş taksit kayıtları, mevcut tutar ve tarih değişiklikleri korunarak ödeme modeline uyarlanır. Toplu düzenleme yalnızca açık taksitleri değiştirir. |
+| A02 | Geri alma yalnızca seçilen ödeme ve ona bağlı gelir düşümünü kaldırır. Diğer kısmi ödemeler ve eski ödenmiş taksitler korunur. |
+| A03 | Yerel koleksiyonlar bağımsız okunup doğrulanır. Bozuk koleksiyon diğerlerini boşaltmaz veya açılışı durdurmaz. Ham kayıt korunur; uyarı gösterilir ve üzerine yazma/eşitleme engellenir. Geçerli yedek içe aktarma veya kullanıcının onayladığı telefon kayıtlarını sıfırlama işlemiyle çıkılabilir. |
+| A04 | Kimlikler koleksiyon içinde benzersiz olmalıdır. Ödenen taksit sayısı, taksit anahtarları, tutarlar, tarihler, para birimleri ve ödeme/gelir düşümü bağlantıları doğrulanır. Silinmiş borçlara ait arşiv kayıtları geçerli kalır. |
+| A05 | Tek taksit ve toplu değişikliklerde borcun toplamı güncel taksit tutarlarından hesaplanır. Tutar daha önce ödenen kısmi miktarın altına indirilemez. |
+| A06 | İlk Google bağlantısı/geri yüklemede yükleme katmanı gösterilir. Ekleme, düzenleme, ödeme, silme ve içe aktarma girişleri engellenir. Gelen kayıtlar ve eşitleme sürümü birlikte kaydedilir. Hata durumunda kilit kalkar, yerel kayıt korunur. Normal yükleme sırasında yapılan değişiklikler sonraki eşitlemede gönderilir. |
+| A07 | Açık borçlar vade tarihine göre gruplanarak yerel saat 09.00 için önceden planlanır. Aynı gün tek bildirim kullanılır. Tarih/tutar değişince güncellenir, ödeme/silmede iptal edilir, geri almada yeniden planlanır. Geçmiş günlük bildirimin tekrar açılışta yeniden üretilmesi önlenir. |
+| A08 | Borç, gelir, gelir düşümü, ödeme arşivi, isim tercihleri ve eşitleme durumu tek atomik yerel kayıtla yazılır. Başarısız yazmada bellek/eski kayıt korunur; formdaki girişler kalır ve başarı onayı gösterilmez. |
+| A09 | İsimler Set ile tekilleştirilir; constructor, __proto__, toString gibi adlar da görünür ve seçilebilir. |
+| A10 | Aylar → ayın borçları → ekleme/düzenleme geçişlerinde önceki pencere kapanır. Geri dönüş seçilen ayı ve gezilen yılı korur. Ana ekrandan ekleme ayrı tutulur. |
+| S01 | Pencere açıkken arka sayfanın konumu sabitlenir. Dokunma/fare kaydırması arkaya geçmez. Son pencere kapanınca önceki konum geri gelir. Küçük ekran, yatay kullanım veya klavye için formun gerekli iç kaydırması korunur. Android geri düğmesi aynı kapatma yolunu kullanır. |
 
-## Sonuçlar ve kapsam
+## Kayıt uyumluluğu
 
-| Kontrol | Sonuç | Kapsam |
-|---|---|---|
-| Mevcut mantık testi | Geçti | Yedek tarih doğrulaması ve modern ödenmiş taksitin toplu düzenlemede korunması |
-| `npm test` | 31/31 geçti | Dil, kayıtların korunması, para/tarih, ödeme/geri alma, gelir, kur, yedek ve eşitleme mantığı |
-| Gerçek Chromium arayüzü | 29/30 geçti; A10 doğrulandı | Dört dilde temel işlemler, ilk açılış açıklamaları, 20 dil/ekran boyutu kombinasyonu ve ek arayüz senaryoları |
-| `npm run test:audit` | 9 mevcut hata doğrulandı | A01–A09; aşağıdaki açık bulguların tekrar üretimi |
-| Saat dilimi | Geçti | UTC, Europe/Istanbul; tarih/mantık senaryoları ayrıca America/Los_Angeles |
-| `npm run build` | Geçti | Tailwind üretimi ve dil dosyasının paketleme yolunun kontrolü |
-| JavaScript sözdizimi | Geçti | Uygulama, çeviriler ve test dosyaları |
-| Canlı kur servisi | HTTP 200 | 5 Kasım 2026'da TRY tabanı için USD, EUR, GBP, CHF, SAR ve AED oranları pozitif ve sayısaldı |
+- Eski ayrı yerel anahtarlar okunur. İlk başarılı yazma, bütün veriyi borc_takip_state_v5 anahtarına aktarır; eski anahtarlar ancak bu yazma tamamlanınca kaldırılır.
+- Başarısız geçişte eski kayıtlar silinmez. Geçerli yeni kayıt bulunduğunda bu kayıt esas alınır.
+- Drive üzerinde aynı tek yedek dosyası kullanılır. Dil ayarı cihazda kalır.
+- Türkçe, İngilizce, Almanca ve Rusça arayüz; tarih, para, hata ve yükleme açıklamalarında korunur. Kullanıcının yazdığı isimler çevrilmez.
 
-Ekranlar: 320×568, 360×640, 412×915, 768×1024 ve 844×390. Her boyut dört dilde denendi.
+## Test sonuçları
 
-### Başarıyla denenmiş örnekler
+| Kontrol | Sonuç |
+|---|---|
+| Mevcut mantık testi | Geçti |
+| Node mantık/dil/düzeltme testleri | 50/50 geçti |
+| A01–A09 hata tekrar kontrolleri | 9/9 geçti; artık npm test içinde zorunlu |
+| Gerçek Chromium senaryoları | 46/46 geçti |
+| Saat dilimleri | UTC ve Europe/Istanbul; tarih, ödeme, eşitleme ve bildirim senaryoları ayrıca America/Los_Angeles |
+| Üretim CSS derlemesi | npm run build geçti |
+| JavaScript sözdizimi ve boşluk kontrolü | Geçti |
 
-- Mevcut ayda yeni borcun bugüne, diğer aylarda ilgili ayın 15'ine açılması.
-- 31 Ocak → 28 Şubat, artık yılda 29 Şubat, başlangıç gününü koruyarak Mart'a geçiş ve Aralık → Ocak yıl geçişi.
-- TRY/USD/EUR borçlarının ayrı toplanması; örnek kurla yaklaşık TL çevirisi ve eksik kurda ayrı para birimlerine güvenli dönüş.
-- Başarılı kur güncellemesinden sonra 12 saat boyunca tekrar istek yapılmaması, çevrimdışıyken istek yapılmaması.
-- Maaştan ve ekstra kaynaktan kısmi ödeme, ödeme arşivi, geri alma ve gelir düzeltmesinin geri alınması.
-- Önce ilerideki taksitin ödenmesi durumunda önceki açık taksitlerin görünür kalması.
-- Sıfır, negatif, boş veya kalan borçtan büyük kısmi ödeme girişleri; gerçek formda sıfır tutarın engellenmesi.
-- Tek taksit düzenlemesinde diğer taksitlerin, borç adının ve para biriminin korunması.
-- Yeni ödeme veri yapısındaki tamamen ödenmiş taksitlerin toplu değişiklikten etkilenmemesi.
-- Tek seferlik gelirin yalnızca kendi ayında, düzenli gelirin başlangıç ayından itibaren görünmesi.
-- Seçili dönemde arama; silme iptali; borç silinse de ödeme arşivinin korunması.
-- Unicode, Türkçe/Almanca/Rusça ve HTML benzeri borç adlarının aynen saklanması; arayüzde HTML çalıştırmaması.
-- Boş cihazda mevcut Drive yedeğinin geri alınması, çevrimdışı değişikliğin beklemesi ve bağlantıdan sonra yüklenmesi.
-- Oturum kapalı veya eşitleme duraklatılmışken veri yüklenmemesi; farklı hesap kimliği gelince işlemin engellenmesi.
-- Telefonda kayıt silmenin eşitlemeyi duraklatması; Drive yedeğini silmenin telefon kayıtlarını koruması.
-- Dört dilde borç ekleme, onay penceresi, sadece bu taksiti düzenleme, kısmi ödeme, arşivden geri alma ve sayfa yenileme.
-- Her test boyutunda son borcun alt sabit butonların üstüne kadar kaydırılabilmesi ve yatay taşma olmaması.
+### Denenen önemli sınırlar
 
-Google Drive ve Android bildirim senaryoları sahte bağlantı/eklenti yanıtlarıyla mantık düzeyinde sınandı. Gerçek OAuth girişi, kapalı uygulamada Android bildirimi, üretici pil kısıtları ve imzalı APK/AAB bu ortamda fiziksel cihaz üzerinde çalıştırılmadı.
+- Eski ödenmiş taksitlerin dönüşümü; taksit tutarı değişikliği; yeniden açılış ve geri alma.
+- Aynı taksitte birden fazla kısmi ödeme; başka taksitlerdeki ödemeler korunarak tek işlemin geri alınması.
+- Bozuk JSON, dizi yerine nesne/null ve bozuk koleksiyon elemanı; sağlam gelir ve diğer kayıtların korunması.
+- Tekrarlanan kimlikler, negatif/kesirli/sınır dışı ödeme sayısı, geçersiz taksit anahtarları, aşırı kısmi ödeme ve bozuk arşiv bağlantıları.
+- İlk Drive indirmesi beklerken kayıt girişlerinin engellenmesi; hata sonrası kilidin kalkması; depolama doluyken geri yüklemenin eski kayda dokunmaması.
+- Normal yükleme sırasında gelir eklenmesi ve bu değişikliğin sonraki eşitlemede gönderilmesi.
+- Bulut yüklemesinden sonra yerel eşitleme bilgisinin kaydedilememesi; güvenli bekleme ve başarılı yeniden deneme.
+- Gelecek gün/ay/yıl vadeleri için 09.00 bildirimi; aynı gün birden fazla borç; yinelenen planlama, ödeme, geri alma, silme ve izin reddi.
+- Depolama hatasında formun korunması; ödeme, geri alma, düzenleme, silme ve veri değiştirme işlemlerinin yarım kalmaması.
+- Gerçek tarayıcıda kota hatası üretme, yeniden deneme ve sayfa yenilenince kayıtların korunması.
+- Dört dilde ekleme, taksit düzenleme, kısmi ödeme, arşivden geri alma, yeniden açılış ve HTML benzeri isimlerin güvenli gösterimi.
+- 320×568, 360×640, 412×915, 768×1024 ve 844×390 boyutlarında dört dilde liste/form yerleşimi.
+- Dört dilde 390×844, 320×568 ve 844×390 boyutlarında hem borç hem gelir formunda gerçek fare tekerleği ve Chromium dokunma hareketleri. Arka konumun sabit kalması, kapanışta geri gelmesi ve normal kaydırmanın yeniden çalışması.
+- Android geri düğmesinin test eklentisiyle tetiklenmesi; isim seçici → form → ana ekran kapanışlarında kilidin doğru kalması/kalkması.
 
-## Açık bulgular
+## Gerçek cihazda kalan doğrulama
 
-Bu sürümde dil desteği ve gerekli yerleşim uyarlamaları eklendi. A01–A10 aşağıda açık olarak bırakılmış inceleme bulgularıdır; düzeltilmiş sayılmamalıdır.
-
-### A01 — Eski ödenmiş taksit toplu düzenlemede değişiyor — Yüksek
-
-Eski sürümden kalan `paidInstallments: 1, partials: {}` yapısında ilk taksit ödenmiş sayılır. İkinci taksitten “Kalan tüm taksitler” ile tutar 100'den 200'e çıkarılınca ilk taksite de 200 yazılıyor. Tamamlanma hesabı yalnızca kısmi ödeme tablosuna bakıyor; eski ödenmiş sayısını hesaba katmıyor.
-
-Öneri: Eski ödeme yapısını tek seferlik dönüştürmek ve bütün ödeme/düzenleme işlemlerinde aynı tamamlanma kuralını kullanmak.
-
-### A02 — Geri alma eski ödenmiş taksitleri açabiliyor — Yüksek
-
-Aynı eski yapıdaki borçta ikinci taksit ödenip arşivden geri alınınca `paidInstallments` 1 yerine 0 oluyor. Daha önceden ödenmiş ilk taksit de yeniden açık görünüyor.
-
-Öneri: Ödeme geri alınırken eski ödemeler için dönüşüm veya korunmuş bir başlangıç durumu kullanmak.
-
-### A03 — Bozuk yerel kayıt açılışı durdurabiliyor — Yüksek
-
-Yerel borç anahtarının içeriği JSON dizisi yerine `{}` olduğunda `loadData()` içinde `debts.forEach is not a function` hatası oluşuyor. Bir JSON ayrıştırma hatasında ise dört kayıt koleksiyonu birden bellekte boşaltılıyor; sağlam koleksiyonlar bağımsız yüklenmiyor.
-
-Öneri: Her koleksiyonu ayrı okuyup türünü doğrulamak; bozuk veriyi sessizce silmeden kurtarma/dışa aktarma imkânı sunmak.
-
-### A04 — Yedek doğrulaması eksik — Yüksek
-
-Aynı kimliğe sahip iki borç, `paidInstallments: 999` ve mevcut taksit sayısı dışında `installmentOverrides[999]` kabul edildi. Aynı kimlikli borçlar seçme, ödeme ve silme işlemlerini belirsizleştirir.
-
-Öneri: Koleksiyon içinde benzersiz kimlik, ödeme sayısı sınırı, taksit anahtarı aralığı ve ödeme/borç bağlantılarını doğrulamak.
-
-### A05 — Tek taksit düzenlemesinde yedekteki toplam eski kalıyor — Orta
-
-100+100+100 borcunun ikinci taksiti 200 yapıldığında açık taksitlerin toplamı doğru şekilde 400 hesaplanıyor; ancak kayıttaki/yedekteki `totalAmount` 300 kalıyor. Mevcut özet ekranı taksitlerden hesapladığı için bu örnekte doğru görünüyor.
-
-Öneri: Her taksit değişikliğinde orijinal toplamı taksit tutarlarından yeniden hesaplamak.
-
-### A06 — İlk Drive geri yükleme sırasında yeni kayıt kaybolabiliyor — Kritik
-
-İlk eşitlemede Drive dosyası indirilirken kullanıcı yeni bir yerel borç eklerse, gelen uzak yedek bu yeni kaydın üstüne yazıyor. Denemede `Added during restore` borcu tamamen kayboldu. İşlem sırasında kayıt girişi engellenmiyor veya kullanıcı uyarılmıyor.
-
-Öneri: İlk geri yükleme tamamlanana kadar kayıt girişini kısa süre kilitlemek. Bu, yeni bir çakışma seçimi ekranı gerektirmeden basit kayıt düzenini korur.
-
-### A07 — İleri vadeli bildirim önceden planlanmıyor — Yüksek
-
-Yarın vadeli bir borç eklenip bildirim planlaması çağrıldığında hiçbir bildirim oluşturulmadı. Kod yalnızca uygulamanın o anda açık olduğu günün borçlarını alıp iki saniye sonrasına bildirim koyuyor. Bu nedenle vade günü uygulama açılmazsa hatırlatma için güvence yok.
-
-Öneri: Ödeme gününe ait yerel bildirimi borç kaydedilirken planlamak; ödeme, tarih değişikliği ve silmede güncellemek.
-
-### A08 — Depolama doluluğu kaydetme sırasında yakalanmıyor — Yüksek
-
-`localStorage.setItem` kota hatası verdiğinde kaydetme işlevi `QuotaExceededError` ile kesiliyor. Borç önce bellekteki listeye eklenmiş olduğundan sonraki bir çizimde görünse bile kalıcı kayda geçmemiş olabilir.
-
-Öneri: Kalıcı yazma hatasını kullanıcıya açıklamak ve başarısız kaydı bellekte tamamlanmış gibi bırakmamak.
-
-### A09 — Bazı borç adları kayıtlı isimler listesinde görünmüyor — Düşük
-
-`constructor` ve `__proto__` adları borç olarak kaydedilebildiği hâlde kayıtlı isimler listesine alınmıyor. İsimleri tekilleştiren normal nesnenin kalıtılan anahtarlarıyla çakışıyorlar.
-
-Öneri: İsimleri tekilleştirmek için `Set` kullanmak.
-
-### A10 — Aylar penceresi borç formunun üstünde kalıyor — Yüksek
-
-Gerçek tarayıcıda Ayarlar → Borçlara aylara göre bak → sonraki yıl → Ocak → Bu Aya Borç Ekle akışında tarih doğru şekilde 15 Ocak açıldı. Ancak açık kalan `modal-months`, borç formuyla aynı z-index'te ve HTML'de daha sonra olduğu için formun üzerine geliyor. Formdaki geri düğmesine gerçek tıklama ay listesi tarafından yakalanıyor.
-
-Öneri: Ay listesinden borç formuna geçerken önceki pencereyi kapatmak ve geri dönüş bağlamını tutmak. Aylık listeden düzenleme akışı da aynı şekilde kontrol edilmeli.
+Google Drive ve Android eklenti yanıtları testlerde taklit edildi. Gerçek OAuth hesabıyla giriş ve kapalı uygulamada fiziksel Android bildirimi bu ortamda çalıştırılmadı. Bildirim hedefi 09.00'dır; Android izin/pil/zamanlama davranışı gerçek cihazda kontrol edilmelidir. Capacitor 6 API sözleşmesi ve kurulu eklentinin Android zamanlama kodu incelendi: [Local Notifications](https://capacitorjs.com/docs/v6/apis/local-notifications).
 
 ## Yeniden çalıştırma
 
-```sh
+~~~sh
 npm test
 npm run build
-npm run test:audit
 TEST_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser
-```
+~~~
 
-`test:audit` mevcut açık hatalar bulunduğunda sıfır olmayan çıkış kodu verir. Tarayıcı testi de A10 düzeltilene kadar bir başarısız senaryo bildirir. Paket üretimi öncesinde çalışan `npm test` dil özelliğinin ve normal akışların regresyon testidir.
-
-Tarayıcı testi için Playwright gereklidir. Var olan Chromium yolu `TEST_BROWSER_EXECUTABLE` ile, ayrı bir Playwright kurulumu `TEST_NODE_MODULES` ile belirtilebilir. Yalnızca bir senaryoyu çalıştırmak için `TEST_CASE_FILTER` kullanılabilir.
+Tarayıcı testi için Playwright gereklidir. Ayrı kurulum TEST_NODE_MODULES, belirli Chromium TEST_BROWSER_EXECUTABLE, tek senaryo TEST_CASE_FILTER, isteğe bağlı ekran görüntüleri TEST_SCREENSHOT_DIR ile belirtilebilir. A01–A09 ayrıca npm run test:audit ile çalıştırılabilir; bu kontroller artık başarılı olmalıdır.

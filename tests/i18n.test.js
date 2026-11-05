@@ -31,7 +31,7 @@ test('all visible static UI phrases have translations', () => {
 });
 
 for (const [code, locale, month] of [['tr', 'tr-TR', 'Kasım'], ['en', 'en-US', 'November'], ['de', 'de-DE', 'November'], ['ru', 'ru-RU', 'ноябрь']]) {
-  test(`${code}: dates, currency, dialogs and saved preference`, () => {
+  test(`${code}: dates, currency, dialogs and saved preference`, async () => {
     const app = createApp();
     assert.ok(app.context.BorcI18n.setLanguage(code));
     assert.equal(app.context.BorcI18n.getLocale(), locale);
@@ -50,7 +50,7 @@ for (const [code, locale, month] of [['tr', 'tr-TR', 'Kasım'], ['en', 'en-US', 
       cancel() { return Promise.resolve(); },
       schedule(payload) { notification = payload.notifications[0]; return Promise.resolve(); }
     } } };
-    app.context.scheduleDueNotifications();
+    await app.context.scheduleDueNotifications();
     const titles = { tr: 'Bugün ödenecek borçlar', en: 'Debts due today', de: 'Heute fällige Schulden', ru: 'Долги к оплате сегодня' };
     assert.equal(notification.title, titles[code]);
     assert.ok(notification.body.startsWith('Ödeme / Zahlung / Платёж: '));
@@ -105,4 +105,6 @@ test('changing language does not trigger another payment notification or mark cl
   app.context.changeAppLanguage('ru');
   assert.equal(notifications, 0);
   assert.equal(app.storage.has('borc_takip_sync_meta'), false);
+  assert.equal(app.storage.has('borc_takip_state_v5'), false);
+  assert.equal(app.context.getSyncMeta().dirty, undefined);
 });

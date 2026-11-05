@@ -1,5 +1,4 @@
-// Deliberately tests desired behavior in pre-existing edge cases. Failures are findings,
-// not localization regressions; this audit is separate from the release test command.
+// Regression checks for the confirmed A01-A09 findings. These must all pass.
 const assert = require('node:assert/strict');
 const { createApp, debt, backup, seed, connectDrive, response } = require('./helpers');
 const results = [];
@@ -39,26 +38,33 @@ async function probe(id, name, fn) {
     a.context.applyDebtEdit('single');
     assert.equal(a.run('debts[0].totalAmount'), 400, 'Three installments of 100/200/100 still export totalAmount=300 instead of 400');
   });
-  await probe('A06', 'First Drive restore must not silently discard a record added during the download', async () => {
+  await probe('A06', 'First Drive restore must block record entry until the download is safely committed', async () => {
     const a = createApp(); const remote = backup([debt({ name: 'Saved remotely' })]);
     connectDrive(a, async url => {
       if (url.includes('alt=media')) {
-        a.run('debts.push(' + JSON.stringify(debt({ id: 'newlocal', name: 'Added during restore' })) + ');saveDebts();');
+        assert.equal(a.run('restoreLocked'), true);
+        for (const [id, value] of Object.entries({ 'debt-name': 'Blocked during restore', 'debt-total': '100', 'debt-due': '2026-11-15', 'debt-currency': 'TRY' })) a.document.getElementById(id).value = value;
+        a.context.saveDebt({ preventDefault() {} });
+        assert.equal(a.run('debts.length'), 0, 'The loading guard must prevent adding a record, rather than accepting and overwriting it');
         return response(remote);
       }
       return response({ files: [{ id: 'file1', version: '1' }] });
     });
     await a.context.syncNow(true);
-    assert.equal(a.run("debts.some(d => d.id === 'newlocal')"), true, 'The record entered while Drive was loading was overwritten by the remote backup');
+    assert.equal(a.run('debts[0].name'), 'Saved remotely');
+    assert.equal(a.run('restoreLocked'), false);
+    assert.equal(a.context.getSyncMeta().baseline, 'file1:1');
   });
-  await probe('A07', 'Upcoming due dates must be scheduled without reopening the app on the due day', () => {
+  await probe('A07', 'Upcoming due dates must be scheduled without reopening the app on the due day', async () => {
     const a = createApp(); const scheduled = [];
     seed(a, backup([debt({ installmentCount: 1, startDate: '2026-11-06' })]));
     a.context.window.Capacitor = { Plugins: { LocalNotifications: {
       cancel() { return Promise.resolve(); }, schedule(payload) { scheduled.push(payload); return Promise.resolve(); }
     } } };
-    a.context.scheduleDueNotifications();
+    await a.context.scheduleDueNotifications();
     assert.ok(scheduled.length > 0, 'No notification was scheduled for tomorrow’s debt; only debts due on the current open day are considered');
+    assert.equal(a.context.toLocalDateStr(scheduled[0].notifications[0].schedule.at), '2026-11-06');
+    assert.equal(scheduled[0].notifications[0].schedule.at.getHours(), 9);
   });
   await probe('A08', 'A full storage device must produce a handled save failure', () => {
     const a = createApp({ failWrites: true });

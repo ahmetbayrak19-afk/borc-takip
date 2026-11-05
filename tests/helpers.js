@@ -35,7 +35,7 @@ function createApp(options = {}) {
   const storage = new Map(Object.entries(options.storage || {}));
   const localStorage = {
     getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-    setItem(key, value) { if (options.failWrites) throw new Error('QuotaExceededError'); storage.set(key, String(value)); },
+    setItem(key, value) { if (typeof options.failWrites === 'function' ? options.failWrites(key, value) : options.failWrites) throw new Error('QuotaExceededError'); storage.set(key, String(value)); },
     removeItem(key) { storage.delete(key); }
   };
   const epoch = new Date(options.now || '2026-11-05T09:00:00Z').getTime();
@@ -52,7 +52,7 @@ function createApp(options = {}) {
     setTimeout(fn, delay) { timers.push({ fn, delay }); return timers.length; }, clearTimeout() {},
     confirm(message) { confirmations.push(message); return options.confirm !== false; },
     fetch: options.fetch || (async function() { throw new Error('Unexpected network request'); }),
-    Blob, URL, Intl, Date: FixedDate, Math, JSON, Object, Array, Number, String, Map, Set
+    Blob, URL, AbortController, Intl, Date: FixedDate, Math, JSON, Object, Array, Number, String, Map, Set
   });
   ['i18n.js', 'app.js'].forEach(file => vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file }));
   const run = source => vm.runInContext(source, context);

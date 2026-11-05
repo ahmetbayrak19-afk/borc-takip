@@ -193,8 +193,128 @@ async function translated(page, selector, source) {
         await page.locator('#months-list button').first().click();
         assert.ok((await page.textContent('#month-debts-title')).includes('2027'));
         await page.click('#btn-add-month-debt'); assert.equal(await page.inputValue('#debt-due'), '2027-01-15');
-        // A short real click proves whether the previous drawer intercepts the form.
         await page.click('#modal-debt button[onclick="closeDebtModal()"]', { timeout: 2500 });
+        assert.equal(await page.locator('#modal-month-debts').isVisible(), true);
+        assert.equal(await page.locator('#modal-months').isVisible(), false);
+        await page.click('#btn-add-month-debt'); await page.fill('#debt-name', 'Month entry'); await page.fill('#debt-total', '120');
+        await page.click('#form-debt button[type="submit"]');
+        await page.click('#modal-debt-saved button[onclick="closeDebtSavedModal()"]');
+        assert.equal(await page.locator('#modal-month-debts').isVisible(), true);
+        await page.click('#month-debts-list button[onclick^="editDebtFromMonth"]');
+        await page.fill('#debt-total', '150'); await page.click('#form-debt button[type="submit"]');
+        assert.equal(await page.locator('#modal-month-debts').isVisible(), true);
+        assert.ok((await page.textContent('#month-debts-list')).includes('150'));
+        await page.click('#modal-month-debts button[onclick="closeMonthDebtsModal()"]');
+        assert.equal(await page.locator('#modal-months').isVisible(), true);
+        assert.equal(await page.textContent('#months-year-label'), '2027');
+      } finally { await context.close(); }
+    });
+    for (const code of ['tr', 'en', 'de', 'ru']) {
+      for (const [width, height] of [[390, 844], [320, 568], [844, 390]]) {
+        await scenario(`${code}: ${width}x${height} wheel and touch cannot scroll behind debt/income forms`, async () => {
+          const list = Array.from({ length: 20 }, (_, i) => debt({ id: 'scroll' + i, installmentCount: 1 }));
+          const { page, context, errors } = await fresh(code, list);
+          try {
+            await page.setViewportSize({ width, height });
+            const cdp = await context.newCDPSession(page);
+            for (const kind of ['debt', 'income']) {
+              await page.evaluate(() => window.scrollTo(0, 600));
+              const oldScroll = await page.evaluate(() => scrollY);
+              const oldTop = await page.locator('main').evaluate(el => el.getBoundingClientRect().top);
+              await page.click('#btn-add-' + kind);
+              await page.waitForFunction(() => document.body.classList.contains('page-locked'));
+              assert.ok(Math.abs((await page.locator('main').evaluate(el => el.getBoundingClientRect().top)) - oldTop) < 2, 'Opening a form must preserve the background position');
+              await page.mouse.move(width / 2, height - 70);
+              await page.mouse.wheel(0, 700); await page.mouse.wheel(0, -700);
+              for (const distance of [-350, 350]) await cdp.send('Input.synthesizeScrollGesture', { x: width / 2, y: height - 80, yDistance: distance, speed: 900, gestureSourceType: 'touch' });
+              await cdp.send('Input.synthesizeScrollGesture', { x: width / 2, y: 15, yDistance: -250, speed: 900, gestureSourceType: 'touch' });
+              assert.ok(Math.abs((await page.locator('main').evaluate(el => el.getBoundingClientRect().top)) - oldTop) < 2, 'Wheel/touch leaked into the background');
+              if (process.env.TEST_SCREENSHOT_DIR && code === 'ru' && width === 390) await page.screenshot({ path: path.join(process.env.TEST_SCREENSHOT_DIR, kind + '-ru.png'), animations: 'disabled' });
+              await page.fill(kind === 'debt' ? '#debt-name' : '#income-name', 'Visible form field');
+              await page.keyboard.press('Escape');
+              await page.waitForFunction(() => !document.body.classList.contains('page-locked'));
+              assert.ok(Math.abs((await page.evaluate(() => scrollY)) - oldScroll) < 2, 'Closing the form must restore the original scroll offset');
+            }
+            await page.mouse.move(width / 2, height / 2); await page.mouse.wheel(0, 500);
+            await page.waitForFunction(() => scrollY > 650);
+            assert.deepEqual(errors, []);
+          } finally { await context.close(); }
+        });
+      }
+    }
+    await scenario('Android back closes nested pickers/forms and releases the scroll lock', async () => {
+      const { page, context, errors } = await fresh('tr', [debt()]);
+      try {
+        await page.addInitScript(() => {
+          window.__nativeListeners = {};
+          window.Capacitor = { Plugins: { App: { addListener(name, fn) { window.__nativeListeners[name] = fn; } } } };
+        });
+        await page.reload(); await page.locator('#splash').waitFor({ state: 'hidden' });
+        await page.click('#btn-add-debt'); await page.click('#btn-pick-name');
+        await page.evaluate(() => window.__nativeListeners.backButton({}));
+        assert.equal(await page.locator('#modal-name-picker').isVisible(), false);
+        assert.equal(await page.locator('#modal-debt').isVisible(), true);
+        assert.equal(await page.locator('body').evaluate(el => el.classList.contains('page-locked')), true);
+        await page.evaluate(() => window.__nativeListeners.backButton({}));
+        await page.waitForFunction(() => !document.body.classList.contains('page-locked'));
+        assert.equal(await page.locator('#modal-debt').isVisible(), false); assert.deepEqual(errors, []);
+      } finally { await context.close(); }
+    });
+    await scenario('A06: the restore overlay blocks real clicks and permits saving after a completed restore', async () => {
+      const { page, context, errors } = await fresh('en');
+      try {
+        await page.evaluate(remote => {
+          window.Capacitor = { Plugins: { GoogleDriveAuth: { async getToken() { return { email: 'qa@example.test', accessToken: 'test' }; } } } };
+          window.fetch = async url => {
+            if (url.includes('alt=media')) { await new Promise(resolve => { window.__releaseRestore = resolve; }); return { ok: true, status: 200, async json() { return remote; } }; }
+            return { ok: true, status: 200, async json() { return { files: [{ id: 'file1', version: '1' }] }; } };
+          };
+          setSyncMeta({ signedIn: true, account: 'qa@example.test', baseline: null });
+          window.__syncing = syncNow(true);
+        }, { version: 4, debts: [debt({ name: 'Cloud restored' })], incomes: [], adjustments: [], payments: [], hiddenNames: [] });
+        await page.locator('#modal-sync-progress').waitFor({ state: 'visible' });
+        await assert.rejects(() => page.click('#btn-add-debt', { timeout: 500 }), /intercepts pointer events|Timeout/);
+        assert.equal(await page.evaluate(() => debts.length), 0);
+        await page.evaluate(async () => { window.__releaseRestore(); await window.__syncing; });
+        await page.locator('#modal-sync-progress').waitFor({ state: 'hidden' });
+        await page.click('#btn-add-debt'); await page.fill('#debt-name', 'Saved after restore'); await page.fill('#debt-total', '50');
+        await page.click('#form-debt button[type="submit"]');
+        assert.equal(await page.evaluate(() => debts.length), 2);
+        await page.reload(); await page.locator('#splash').waitFor({ state: 'hidden' });
+        assert.equal(await page.evaluate(() => debts.length), 2);
+        assert.deepEqual(errors, []);
+      } finally { await context.close(); }
+    });
+    await scenario('A08: a failed real form save keeps the draft and retry succeeds', async () => {
+      const { page, context, errors } = await fresh('en');
+      try {
+        await page.evaluate(() => {
+          window.__savedSetItem = Storage.prototype.setItem;
+          Storage.prototype.setItem = function(key, value) { if (key === 'borc_takip_state_v5') throw new DOMException('Full storage', 'QuotaExceededError'); return window.__savedSetItem.call(this, key, value); };
+        });
+        await page.click('#btn-add-debt'); await page.fill('#debt-name', 'Unsaved draft'); await page.fill('#debt-total', '100');
+        await page.click('#form-debt button[type="submit"]');
+        assert.equal(await page.evaluate(() => debts.length), 0);
+        assert.equal(await page.inputValue('#debt-name'), 'Unsaved draft'); assert.equal(await page.locator('#modal-debt').isVisible(), true);
+        assert.ok((await page.textContent('#toast')).includes('not saved'));
+        await page.evaluate(() => { Storage.prototype.setItem = window.__savedSetItem; });
+        await page.click('#form-debt button[type="submit"]'); await page.locator('#modal-debt-saved').waitFor({ state: 'visible' });
+        await page.reload(); await page.locator('#splash').waitFor({ state: 'hidden' }); assert.equal(await page.evaluate(() => debts.length), 1);
+        assert.deepEqual(errors, []);
+      } finally { await context.close(); }
+    });
+    await scenario('A03: corrupt local JSON shows a warning while valid income remains usable', async () => {
+      const { page, context, errors } = await fresh('en');
+      try {
+        await page.evaluate(() => {
+          localStorage.setItem('borc_takip_debts', '{broken');
+          localStorage.setItem('borc_takip_incomes', JSON.stringify([{ id: 'salary', name: 'Healthy income', amount: 1000, startMonth: '2026-11', currency: 'TRY' }]));
+        });
+        await page.reload(); await page.locator('#splash').waitFor({ state: 'hidden' });
+        assert.equal(await page.locator('#storage-warning').isVisible(), true);
+        assert.ok((await page.textContent('#income-list')).includes('Healthy income'));
+        assert.equal(await page.evaluate(() => localStorage.getItem('borc_takip_debts')), '{broken');
+        assert.deepEqual(errors, []);
       } finally { await context.close(); }
     });
   } finally {

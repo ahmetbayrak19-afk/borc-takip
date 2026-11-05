@@ -4,7 +4,7 @@
   "description": "Borç ve gelir takip uygulaması",
   "main": "index.html",
   "scripts": {
-    "test": "node tests/logic.test.js && node --test tests/i18n.test.js tests/scenarios.test.js",
+    "test": "node tests/logic.test.js && node --test tests/i18n.test.js tests/scenarios.test.js tests/fixes.test.js && node tests/audit.js",
     "test:audit": "node tests/audit.js",
     "test:browser": "node tests/browser.test.js",
     "build": "tailwindcss -i ./styles/tailwind.css -o ./app.css --minify",

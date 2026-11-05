@@ -5,11 +5,19 @@ const STORAGE_INCOMES = 'borc_takip_incomes';
 const STORAGE_ADJUST = 'borc_takip_adjustments';
 const STORAGE_PAYMENTS = 'borc_takip_payments';
 const STORAGE_SYNC_META = 'borc_takip_sync_meta';
+const STORAGE_STATE = 'borc_takip_state_v5';
+const STORAGE_HIDDEN_NAMES = 'borc_takip_hidden_names';
+const STORAGE_SYNC_WELCOME = 'borc_takip_sync_welcome_seen';
 const DRIVE_FILE_NAME = 'borc-takip-data.json';
 let debts = [];
 let incomes = [];
 let adjustments = [];
 let payments = [];
+let hiddenNames = [];
+let syncMeta = {};
+let storageReadOnly = false;
+let restoreLocked = false;
+let syncWriteBlocked = false;
 let editingDebtId = null;
 let editingInstallmentIndex = null;
 let selectedMonthContext = null;
@@ -20,6 +28,8 @@ let pendingPay = null;
 let savedDebtId = null;
 let debtSearchQuery = '';
 let monthsViewYear = new Date().getFullYear();
+let monthListReturnToNavigator = false;
+let savedDebtReturnMonth = null;
 
 const CURRENCIES = [
   { code: 'TRY', symbol: '₺', label: 'TRY ₺' },
@@ -173,35 +183,133 @@ function escapeHtml(str) {
   s = s.split('"').join('&' + 'quot;');
   return s;
 }
-function loadData() {
-  try {
-    debts = JSON.parse(localStorage.getItem(STORAGE_DEBTS) || '[]');
-    incomes = JSON.parse(localStorage.getItem(STORAGE_INCOMES) || '[]');
-    adjustments = JSON.parse(localStorage.getItem(STORAGE_ADJUST) || '[]');
-    payments = JSON.parse(localStorage.getItem(STORAGE_PAYMENTS) || '[]');
-  } catch (e) { debts = []; incomes = []; adjustments = []; payments = []; }
-  if (!Array.isArray(payments)) payments = [];
-  debts.forEach(function(d) {
+function copyRecords(value) { return JSON.parse(JSON.stringify(value)); }
+function normalizeDebtPayments(debt) {
+  if (!debt.partials) debt.partials = {};
+  if (!debt.installmentOverrides) debt.installmentOverrides = {};
+  if (debt.paymentModel !== 1) {
+    for (let i = 0; i < (debt.paidInstallments || 0); i++) {
+      debt.partials[i] = Math.max(Number(debt.partials[i]) || 0, installmentFullAmount(debt, i));
+    }
+    debt.paymentModel = 1;
+  }
+  return debt;
+}
+function normalizeRecords(data) {
+  const result = copyRecords(data);
+  result.debts.forEach(function(d) {
     if (!d.currency) d.currency = 'TRY';
+    if (!d.installmentCount) d.installmentCount = 1;
     if (!d.partials) d.partials = {};
     if (!d.installmentOverrides) d.installmentOverrides = {};
+    if ((d.paidInstallments || 0) > 0) normalizeDebtPayments(d);
   });
-  incomes.forEach(function(i) {
+  result.incomes.forEach(function(i) {
     if (!i.currency) i.currency = 'TRY';
     if (!i.type) i.type = 'recurring';
     if (!i.startMonth) {
       i.startMonth = (i.createdAt && String(i.createdAt).substring(0, 7)) || '2020-01';
     }
   });
-  loadHiddenNames();
+  return result;
 }
-function saveDebts() { localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts)); markSyncDirty(); }
-function saveIncomes() { localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes)); markSyncDirty(); }
-function saveAdjustments() { localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments)); markSyncDirty(); }
-function savePayments() { localStorage.setItem(STORAGE_PAYMENTS, JSON.stringify(payments)); markSyncDirty(); }
-function installmentRemaining(debt, index) {
+function currentState() {
+  return { version: 5, debts: debts, incomes: incomes, adjustments: adjustments, payments: payments, hiddenNames: hiddenNames, syncMeta: syncMeta };
+}
+function installState(state) {
+  debts = state.debts; incomes = state.incomes; adjustments = state.adjustments;
+  payments = state.payments; hiddenNames = state.hiddenNames;
+  syncMeta = state.syncMeta || {};
+}
+function showStorageProblem() {
+  const banner = document.getElementById('storage-warning');
+  if (banner) banner.classList.toggle('hidden', !storageReadOnly);
+}
+function loadData() {
+  storageReadOnly = false;
+  let snapshot = null;
+  try {
+    const raw = localStorage.getItem(STORAGE_STATE);
+    if (raw !== null) {
+      snapshot = JSON.parse(raw);
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('Invalid snapshot');
+    }
+  } catch (error) { storageReadOnly = true; snapshot = {}; }
+  const state = {};
+  const keys = { debts: STORAGE_DEBTS, incomes: STORAGE_INCOMES, adjustments: STORAGE_ADJUST, payments: STORAGE_PAYMENTS, hiddenNames: STORAGE_HIDDEN_NAMES };
+  Object.keys(keys).forEach(function(name) {
+    try {
+      const records = snapshot ? snapshot[name] : JSON.parse(localStorage.getItem(keys[name]) || '[]');
+      const input = { debts: [], incomes: [], adjustments: [], payments: [], hiddenNames: [] };
+      input[name] = records;
+      if (!Array.isArray(records)) throw new Error('Invalid collection');
+      validateBackup(input, true);
+      state[name] = records;
+    } catch (error) { state[name] = []; storageReadOnly = true; }
+  });
+  try {
+    state.syncMeta = (snapshot ? snapshot.syncMeta : JSON.parse(localStorage.getItem(STORAGE_SYNC_META) || '{}')) || {};
+    if (typeof state.syncMeta !== 'object' || Array.isArray(state.syncMeta)) throw new Error('Invalid sync metadata');
+  } catch (error) { state.syncMeta = {}; storageReadOnly = true; }
+  if (!storageReadOnly) {
+    try { validateBackup(state); } catch (error) { storageReadOnly = true; }
+  }
+  installState(normalizeRecords(state));
+  showStorageProblem();
+}
+function canChangeRecords() {
+  if (restoreLocked) { showToast(t('Kayıtların yükleniyor…')); return false; }
+  if (syncWriteBlocked) { showToast(t('Eşitleme bilgisi kaydedilemedi. Şimdi eşitle ile yeniden deneyin.')); return false; }
+  if (storageReadOnly) { showToast(t('Bazı kayıtlar okunamadı. Mevcut veriler korundu. Yedekten geri yükleyin.')); return false; }
+  return true;
+}
+function persistState(state, replaceDamaged) {
+  if (storageReadOnly && !replaceDamaged) { showStorageProblem(); return false; }
+  try {
+    // One atomic write commits debts, income, payments and sync metadata together.
+    localStorage.setItem(STORAGE_STATE, JSON.stringify(state));
+  } catch (error) {
+    showToast(t('Kayıt alanı dolu veya kullanılamıyor. Kaydedilemedi.'), 5200);
+    return false;
+  }
+  installState(state);
+  storageReadOnly = false;
+  showStorageProblem();
+  // Remove legacy keys only after the replacement snapshot has been saved.
+  [STORAGE_DEBTS, STORAGE_INCOMES, STORAGE_ADJUST, STORAGE_PAYMENTS, STORAGE_HIDDEN_NAMES, STORAGE_SYNC_META].forEach(function(key) {
+    try { localStorage.removeItem(key); } catch (error) { /* The committed snapshot remains authoritative. */ }
+  });
+  updateSyncUI();
+  return true;
+}
+function queueSync() {
+  const meta = getSyncMeta();
+  if (!meta.signedIn || meta.paused || storageReadOnly) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(function() { syncNow(false); }, 1200);
+}
+function commitData(changes, options) {
+  options = options || {};
+  if (!options.fromSync && !options.replaceDamaged && !canChangeRecords()) return false;
+  const state = Object.assign({}, currentState(), changes);
+  try { validateBackup(state); } catch (error) { showToast(t('Eksik bilgi')); return false; }
+  state.syncMeta = Object.assign({}, syncMeta, options.syncMeta || {});
+  if (options.dirty !== false) {
+    state.syncMeta.dirty = true;
+    state.syncMeta.revision = (syncMeta.revision || 0) + 1;
+    state.syncMeta.updatedAt = new Date().toISOString();
+  }
+  if (!persistState(state, options.replaceDamaged)) return false;
+  if (options.dirty !== false) queueSync();
+  return true;
+}
+function installmentFullAmount(debt, index) {
   const override = debt.installmentOverrides && debt.installmentOverrides[index];
-  const full = (override && Number(override.amount)) || debt.installmentAmount || debt.totalAmount || 0;
+  return override && override.amount != null ? Number(override.amount) : Number(debt.installmentAmount ?? debt.totalAmount ?? 0);
+}
+function installmentRemaining(debt, index) {
+  if (debt.paymentModel !== 1 && index < (debt.paidInstallments || 0)) return 0;
+  const full = installmentFullAmount(debt, index);
   const paid = (debt.partials && Number(debt.partials[index])) || 0;
   return Math.max(0, Math.round((full - paid) * 100) / 100);
 }
@@ -219,7 +327,7 @@ function getActiveInstallments() {
         debtId: debt.id,
         name: debt.name,
         amount: remaining,
-        fullAmount: (override && Number(override.amount)) || debt.installmentAmount || debt.totalAmount || 0,
+        fullAmount: installmentFullAmount(debt, i),
         partialPaid: (debt.partials && Number(debt.partials[i])) || 0,
         dueDate: (override && override.dueDate) || addMonths(debt.startDate, i),
         installmentLabel: (i + 1) + '/' + count,
@@ -536,8 +644,10 @@ function renderAll() {
   }
 }
 function startPay(debtId, installmentIndex, mode) {
+  if (!canChangeRecords()) return;
   const debt = debts.find(function(d) { return d.id === debtId; });
   if (!debt) return;
+  if (!Number.isInteger(installmentIndex) || installmentIndex < 0 || installmentIndex >= (debt.installmentCount || 1)) return;
   const remaining = installmentRemaining(debt, installmentIndex);
   if (remaining <= 0) return;
   pendingPay = { debtId: debtId, installmentIndex: installmentIndex, amount: remaining, mode: mode };
@@ -556,6 +666,7 @@ function closePartialModal() {
   pendingPay = null;
 }
 function submitPartialAmount() {
+  if (!canChangeRecords()) return;
   const val = parseFloat(document.getElementById('partial-amount').value);
   if (!pendingPay || isNaN(val) || val <= 0) { showToast(t('Geçerli tutar girin')); return; }
   const debt = debts.find(function(d) { return d.id === pendingPay.debtId; });
@@ -572,33 +683,32 @@ function closePaySourceModal() {
   pendingPay = null;
 }
 function confirmPaySource(source) {
-  if (!pendingPay) return;
-  const debt = debts.find(function(d) { return d.id === pendingPay.debtId; });
-  if (!debt) return;
+  if (!pendingPay || !canChangeRecords() || (source !== 'salary' && source !== 'extra')) return;
+  const original = debts.find(function(d) { return d.id === pendingPay.debtId; });
+  if (!original) return;
+  const debt = normalizeDebtPayments(copyRecords(original));
   const amount = pendingPay.amount;
   const idx = pendingPay.installmentIndex;
+  if (!Number.isFinite(amount) || amount <= 0 || amount > installmentRemaining(debt, idx)) return;
   const paymentOverride = debt.installmentOverrides && debt.installmentOverrides[idx];
   const due = (paymentOverride && paymentOverride.dueDate) || addMonths(debt.startDate, idx);
   const monthKey = due.substring(0, 7);
   if (!debt.partials) debt.partials = {};
   debt.partials[idx] = Math.round(((Number(debt.partials[idx]) || 0) + amount) * 100) / 100;
-  while ((debt.paidInstallments || 0) < (debt.installmentCount || 1) && installmentRemaining(debt, debt.paidInstallments || 0) <= 0) {
-    debt.paidInstallments = (debt.paidInstallments || 0) + 1;
-  }
+  recomputePaidInstallments(debt);
   let adjustmentId = null;
+  const nextAdjustments = adjustments.slice();
   if (source === 'salary') {
     adjustmentId = uid();
-    adjustments.push({ id: adjustmentId, monthKey: monthKey, amount: amount, currency: debt.currency || 'TRY', note: t('Maaştan ödeme: {name}', { name: debt.name }), createdAt: new Date().toISOString() });
-    saveAdjustments();
+    nextAdjustments.push({ id: adjustmentId, monthKey: monthKey, amount: amount, currency: debt.currency || 'TRY', note: t('Maaştan ödeme: {name}', { name: debt.name }), createdAt: new Date().toISOString() });
   }
-  payments.unshift({
+  const payment = {
     id: uid(), debtId: debt.id, debtName: debt.name, installmentIndex: idx,
     installmentLabel: (idx + 1) + '/' + (debt.installmentCount || 1), amount: amount,
     currency: debt.currency || 'TRY', source: source, dueDate: due,
     paidAt: new Date().toISOString(), adjustmentId: adjustmentId
-  });
-  savePayments();
-  saveDebts();
+  };
+  if (!commitData({ debts: debts.map(function(d) { return d.id === debt.id ? debt : d; }), adjustments: nextAdjustments, payments: [payment].concat(payments) })) return;
   closePaySourceModal();
   showToast(t(source === 'salary' ? 'Maaştan ödendi' : 'Ekstra ile ödendi'));
   renderAll();
@@ -628,16 +738,19 @@ function openPaymentHistory() {
 }
 function closePaymentHistory() { document.getElementById('modal-payment-history').classList.add('hidden'); }
 function recomputePaidInstallments(debt) {
+  normalizeDebtPayments(debt);
   debt.paidInstallments = 0;
   while (debt.paidInstallments < (debt.installmentCount || 1) && installmentRemaining(debt, debt.paidInstallments) <= 0) {
     debt.paidInstallments += 1;
   }
 }
 function undoPayment(paymentId) {
+  if (!canChangeRecords()) return;
   const payment = payments.find(function(p) { return p.id === paymentId; });
   if (!payment) return;
-  const debt = debts.find(function(d) { return d.id === payment.debtId; });
-  if (!debt) { showToast(t('Borç silindiği için ödeme geri alınamaz')); return; }
+  const original = debts.find(function(d) { return d.id === payment.debtId; });
+  if (!original) { showToast(t('Borç silindiği için ödeme geri alınamaz')); return; }
+  const debt = normalizeDebtPayments(copyRecords(original));
   if (!confirm(t('{amount} tutarındaki ödeme geri alınsın mı?', { amount: formatMoney(payment.amount, payment.currency) }))) return;
   const idx = payment.installmentIndex || 0;
   const nextPaid = Math.max(0, Math.round(((Number(debt.partials && debt.partials[idx]) || 0) - Number(payment.amount || 0)) * 100) / 100);
@@ -645,12 +758,11 @@ function undoPayment(paymentId) {
   if (nextPaid > 0) debt.partials[idx] = nextPaid;
   else delete debt.partials[idx];
   recomputePaidInstallments(debt);
-  if (payment.adjustmentId) adjustments = adjustments.filter(function(a) { return a.id !== payment.adjustmentId; });
-  payments = payments.filter(function(p) { return p.id !== paymentId; });
-  localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts));
-  localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments));
-  localStorage.setItem(STORAGE_PAYMENTS, JSON.stringify(payments));
-  markSyncDirty();
+  if (!commitData({
+    debts: debts.map(function(d) { return d.id === debt.id ? debt : d; }),
+    adjustments: adjustments.filter(function(a) { return !payment.adjustmentId || a.id !== payment.adjustmentId; }),
+    payments: payments.filter(function(p) { return p.id !== paymentId; })
+  })) return;
   renderPaymentHistory();
   renderAll();
   scheduleDueNotifications();
@@ -668,11 +780,16 @@ function selectedFilterMonthKey() {
   }
   return null;
 }
-function openDebtModal(editId, installmentIndex, monthKey) {
+function openDebtModal(editId, installmentIndex, monthKey, returnToMonth) {
+  if (!canChangeRecords()) return;
+  const original = editId && debts.find(function(d) { return d.id === editId; });
+  if (original && original.installmentCount > 1 && !Number.isInteger(installmentIndex)) installmentIndex = original.paidInstallments || 0;
   editingDebtId = editId || null;
   editingInstallmentIndex = Number.isInteger(installmentIndex) ? installmentIndex : null;
   const installmentEdit = editingInstallmentIndex !== null;
-  debtReturnMonth = monthKey || selectedMonthContext;
+  debtReturnMonth = returnToMonth ? monthKey : null;
+  document.getElementById('modal-months').classList.add('hidden');
+  document.getElementById('modal-month-debts').classList.add('hidden');
   document.getElementById('debt-modal-title').textContent = t(installmentEdit ? 'Taksiti Düzenle' : (editId ? 'Borcu Düzenle' : 'Yeni Borç Ekle'));
   document.getElementById('debt-name-field').classList.remove('hidden');
   document.getElementById('debt-currency-field').classList.remove('hidden');
@@ -719,12 +836,14 @@ function openDebtModal(editId, installmentIndex, monthKey) {
   }
   document.getElementById('modal-debt').classList.remove('hidden');
 }
-function closeDebtModal() {
+function closeDebtModal(returnToMonth) {
+  const monthKey = debtReturnMonth;
   document.getElementById('modal-debt').classList.add('hidden');
   editingDebtId = null;
   editingInstallmentIndex = null;
   pendingDebtSave = null;
   debtReturnMonth = null;
+  if (returnToMonth !== false && monthKey) openMonthDebts(monthKey, monthTitleFromKey(monthKey));
 }
 function updateInstallmentPreview() {
   const total = parseFloat(document.getElementById('debt-total').value) || 0;
@@ -740,13 +859,14 @@ function updateInstallmentPreview() {
 }
 function saveDebt(e) {
   e.preventDefault();
+  if (!canChangeRecords()) return;
   const name = document.getElementById('debt-name').value.trim();
   const amount = parseFloat(document.getElementById('debt-total').value);
   const due = document.getElementById('debt-due').value;
   const recurring = document.getElementById('debt-recurring').checked;
   const count = recurring ? (parseInt(document.getElementById('debt-installments').value, 10) || 1) : 1;
   const currency = document.getElementById('debt-currency').value || 'TRY';
-  if (!name || isNaN(amount) || amount <= 0 || !due) { showToast(t('Eksik bilgi')); return; }
+  if (!name || !Number.isFinite(amount) || amount <= 0 || !due || !Number.isInteger(count) || count < 1 || count > 120) { showToast(t('Eksik bilgi')); return; }
   let paidInstallments = 0;
   let partials = {};
   let installmentOverrides = {};
@@ -775,6 +895,9 @@ function saveDebt(e) {
     createdAt: originalCreatedAt || new Date().toISOString()
   };
   const original = debts.find(function(d) { return d.id === editingDebtId; });
+  if (original && amount < (Number(original.partials && original.partials[editingInstallmentIndex || 0]) || 0)) {
+    showToast(t('Tutar, ödenmiş tutardan az olamaz.')); return;
+  }
   if (original && editingInstallmentIndex !== null && original.installmentCount > 1) {
     pendingDebtSave = { debt: debt, installmentIndex: editingInstallmentIndex };
     const scopeInfo = document.getElementById('edit-scope-info');
@@ -785,30 +908,34 @@ function saveDebt(e) {
   persistDebt(debt, false);
 }
 function persistDebt(debt, wasEdited, editedInstallment) {
+  if (!canChangeRecords()) return false;
   const editId = editingDebtId;
+  const returnMonth = debtReturnMonth;
+  const nextDebts = debts.slice();
   if (editingDebtId) {
-    const idx = debts.findIndex(function(d) { return d.id === editingDebtId; });
-    if (idx >= 0) debts[idx] = debt;
+    const idx = nextDebts.findIndex(function(d) { return d.id === editingDebtId; });
+    if (idx < 0) return false;
+    nextDebts[idx] = debt;
   } else {
-    debts.push(debt);
+    nextDebts.push(debt);
   }
-  saveDebts();
-  if (hiddenNames.indexOf(debt.name) >= 0) {
-    hiddenNames = hiddenNames.filter(function(x) { return x !== debt.name; });
-    saveHiddenNames();
-  }
+  if (!commitData({ debts: nextDebts, hiddenNames: hiddenNames.filter(function(x) { return x !== debt.name; }) })) return false;
   const date = editedInstallment?.dueDate || debt.startDate;
   const amount = editedInstallment?.amount ?? debt.installmentAmount;
   const detail = debt.name + ' · ' + formatDateTR(date) + ' · ' + formatMoney(amount, debt.currency) + ((debt.installmentCount || 1) > 1 ? t(' · {count} taksit', { count: debt.installmentCount }) : '');
-  closeDebtModal();
+  document.getElementById('modal-edit-scope').classList.add('hidden');
+  closeDebtModal(false);
   renderAll();
-  if (editId || wasEdited) showToast(t('{detail} olarak güncellendi', { detail: detail }), 5200);
-  else showDebtSavedModal(debt);
+  if (editId || wasEdited) {
+    if (returnMonth) openMonthDebts(returnMonth, monthTitleFromKey(returnMonth));
+    showToast(t('{detail} olarak güncellendi', { detail: detail }), 5200);
+  } else showDebtSavedModal(debt, returnMonth);
   scheduleDueNotifications();
+  return true;
 }
-function showDebtSavedModal(debt) {
+function showDebtSavedModal(debt, returnMonth) {
   savedDebtId = debt.id;
-  selectedMonthContext = null;
+  if (returnMonth !== undefined) savedDebtReturnMonth = returnMonth;
   document.getElementById('modal-month-debts').classList.add('hidden');
   document.getElementById('saved-debt-name').textContent = debt.name;
   document.getElementById('saved-debt-date').textContent = formatDateTR(debt.startDate);
@@ -821,56 +948,64 @@ function showDebtSavedModal(debt) {
   } else row.classList.add('hidden');
   document.getElementById('modal-debt-saved').classList.remove('hidden');
 }
-function closeDebtSavedModal() {
+function closeDebtSavedModal(returnToMonth) {
+  const monthKey = savedDebtReturnMonth;
   document.getElementById('modal-debt-saved').classList.add('hidden');
   savedDebtId = null;
+  savedDebtReturnMonth = null;
+  if (returnToMonth !== false && monthKey) openMonthDebts(monthKey, monthTitleFromKey(monthKey));
 }
 function editSavedDebt() {
   const id = savedDebtId;
-  closeDebtSavedModal();
-  if (id) openDebtModal(id);
+  const monthKey = savedDebtReturnMonth;
+  closeDebtSavedModal(false);
+  if (id) openDebtModal(id, null, monthKey, !!monthKey);
 }
 function cancelDebtScope() {
   document.getElementById('modal-edit-scope').classList.add('hidden');
   pendingDebtSave = null;
 }
 function applyDebtEdit(scope) {
-  if (!pendingDebtSave) return;
+  if (!pendingDebtSave || !canChangeRecords()) return;
   const draft = pendingDebtSave.debt;
   const installmentIndex = pendingDebtSave.installmentIndex;
-  const old = debts.find(function(d) { return d.id === draft.id; });
-  if (!old) { cancelDebtScope(); return; }
+  const original = debts.find(function(d) { return d.id === draft.id; });
+  if (!original) { cancelDebtScope(); return; }
+  const old = normalizeDebtPayments(copyRecords(original));
+  if (installmentRemaining(old, installmentIndex) <= 0) { cancelDebtScope(); return; }
   const change = { amount: draft.installmentAmount, dueDate: draft.startDate };
   const overrides = { ...old.installmentOverrides };
   const updated = { ...old, installmentOverrides: overrides };
+  const changedIndices = scope === 'all'
+    ? Array.from({ length: old.installmentCount }, function(_, i) { return i; }).filter(function(i) { return installmentRemaining(old, i) > 0; })
+    : [installmentIndex];
+  if (changedIndices.some(function(i) { return change.amount < (Number(old.partials[i]) || 0); })) {
+    showToast(t('Tutar, ödenmiş tutardan az olamaz.')); return;
+  }
   if (scope === 'all') {
-    let totalAmount = 0;
     for (let i = 0; i < old.installmentCount; i++) {
       const existing = old.installmentOverrides && old.installmentOverrides[i];
       const completed = installmentRemaining(old, i) <= 0;
       if (!completed) {
         overrides[i] = Object.assign({}, existing || {}, { amount: change.amount });
       }
-      totalAmount += completed
-        ? ((existing && Number(existing.amount)) || old.installmentAmount || 0)
-        : change.amount;
     }
-    updated.totalAmount = Math.round(totalAmount * 100) / 100;
   }
   overrides[installmentIndex] = Object.assign({}, overrides[installmentIndex] || {}, change);
-  document.getElementById('modal-edit-scope').classList.add('hidden');
-  pendingDebtSave = null;
+  updated.totalAmount = Math.round(Array.from({ length: old.installmentCount }, function(_, i) { return installmentFullAmount(updated, i); }).reduce(function(sum, amount) { return sum + amount; }, 0) * 100) / 100;
+  recomputePaidInstallments(updated);
   persistDebt(updated, true, change);
 }
 function editDebt(id, installmentIndex) { openDebtModal(id, installmentIndex); }
 function deleteDebt(id) {
+  if (!canChangeRecords()) return;
   const debt = debts.find(function(d) { return d.id === id; });
   if (!debt) return;
   if (!confirm(t('“{name}” borcu ve kalan taksitleri silinsin mi? Ödeme arşivi korunur.', { name: debt.name }))) return;
-  debts = debts.filter(function(d) { return d.id !== id; });
-  saveDebts();
+  if (!commitData({ debts: debts.filter(function(d) { return d.id !== id; }) })) return;
   showToast(t('Borç silindi'));
   renderAll();
+  scheduleDueNotifications();
 }
 let incomeType = 'recurring';
 function setIncomeType(type) {
@@ -900,6 +1035,7 @@ function setIncomeType(type) {
   if (dateEl && !dateEl.value) dateEl.value = todayStr();
 }
 function openIncomeModal() {
+  if (!canChangeRecords()) return;
   document.getElementById('income-name').value = '';
   document.getElementById('income-amount').value = '';
   fillCurrencySelects();
@@ -914,15 +1050,16 @@ function closeIncomeModal() {
 }
 function saveIncome(e) {
   e.preventDefault();
+  if (!canChangeRecords()) return;
   const name = document.getElementById('income-name').value.trim();
   const amount = parseFloat(document.getElementById('income-amount').value);
   const currency = document.getElementById('income-currency').value || 'TRY';
   const type = incomeType === 'once' ? 'once' : 'recurring';
   const dateVal = (document.getElementById('income-date') && document.getElementById('income-date').value) || todayStr();
-  if (!name || isNaN(amount) || amount <= 0) { showToast(t('Eksik bilgi')); return; }
+  if (!name || !Number.isFinite(amount) || amount <= 0) { showToast(t('Eksik bilgi')); return; }
   if (type === 'once' && !dateVal) { showToast(t('Tarih seçin')); return; }
   const startMonth = type === 'once' ? dateVal.substring(0, 7) : todayStr().substring(0, 7);
-  incomes.push({
+  const income = {
     id: uid(),
     name: name,
     amount: amount,
@@ -931,18 +1068,18 @@ function saveIncome(e) {
     date: type === 'once' ? dateVal : null,
     startMonth: startMonth,
     createdAt: new Date().toISOString()
-  });
-  saveIncomes();
+  };
+  if (!commitData({ incomes: incomes.concat([income]) })) return;
   closeIncomeModal();
   showToast(t(type === 'once' ? 'Tek seferlik gelir eklendi' : 'Düzenli gelir eklendi'));
   renderAll();
 }
 function deleteIncome(id) {
+  if (!canChangeRecords()) return;
   const income = incomes.find(function(i) { return i.id === id; });
   if (!income) return;
   if (!confirm(t('“{name}” geliri silinsin mi?', { name: income.name }))) return;
-  incomes = incomes.filter(function(i) { return i.id !== id; });
-  saveIncomes();
+  if (!commitData({ incomes: incomes.filter(function(i) { return i.id !== id; }) })) return;
   showToast(t('Gelir silindi'));
   renderAll();
 }
@@ -1007,6 +1144,7 @@ function closeLegalInfo() { document.getElementById('modal-legal').classList.add
 function openMonthsModal(year) {
   closeSettings();
   monthsViewYear = Number.isInteger(year) ? year : monthsViewYear;
+  monthListReturnToNavigator = false;
   renderMonthsNavigator();
   document.getElementById('modal-months').classList.remove('hidden');
 }
@@ -1043,6 +1181,8 @@ function renderMonthsNavigator() {
 }
 function closeMonthsModal() { document.getElementById('modal-months').classList.add('hidden'); }
 function openMonthDebts(monthKey, title) {
+  if (!document.getElementById('modal-months').classList.contains('hidden')) monthListReturnToNavigator = true;
+  closeMonthsModal();
   selectedMonthContext = monthKey;
   document.getElementById('month-debts-title').textContent = title;
   const list = document.getElementById('month-debts-list');
@@ -1080,11 +1220,12 @@ function monthTitleFromKey(monthKey) {
 }
 function editDebtFromMonth(id, installmentIndex, monthKey) {
   document.getElementById('modal-month-debts').classList.add('hidden');
-  openDebtModal(id, installmentIndex, monthKey);
+  openDebtModal(id, installmentIndex, monthKey, true);
 }
 function closeMonthDebtsModal() {
   document.getElementById('modal-month-debts').classList.add('hidden');
   selectedMonthContext = null;
+  if (monthListReturnToNavigator) document.getElementById('modal-months').classList.remove('hidden');
 }
 function exportData(data) {
   data = data || { version: 4, debts: debts, incomes: incomes, adjustments: adjustments, payments: payments, hiddenNames: hiddenNames, exportedAt: new Date().toISOString() };
@@ -1131,9 +1272,13 @@ function downloadFallback(json, fileName) {
   URL.revokeObjectURL(url);
   showToast(t('İndirildi: {file}', { file: fileName }));
 }
-function validateBackup(data) {
+function validateBackup(data, skipRelations) {
   const validRecord = function(record) {
-    return record && typeof record === 'object' && typeof record.id === 'string' && /^[a-zA-Z0-9_-]+$/.test(record.id);
+    return record && typeof record === 'object' && !Array.isArray(record) && validId(record.id);
+  };
+  const validId = function(value) { return typeof value === 'string' && /^[a-zA-Z0-9_-]+$/.test(value); };
+  const uniqueRecords = function(records) {
+    return Array.isArray(records) && records.every(validRecord) && new Set(records.map(function(r) { return r.id; })).size === records.length;
   };
   const validDate = function(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -1144,41 +1289,70 @@ function validateBackup(data) {
   const validMonth = function(value) { return typeof value === 'string' && /^\d{4}-\d{2}$/.test(value) && validDate(value + '-01'); };
   const validCurrency = function(record) { return !record.currency || CURRENCIES.some(function(c) { return c.code === record.currency; }); };
   const validAmount = function(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0; };
-  if (!data || !Array.isArray(data.debts) || !data.debts.every(function(d) {
+  const validMap = function(map, count, validate) {
+    return map == null || map && typeof map === 'object' && !Array.isArray(map)
+      && Object.entries(map).every(function(entry) {
+        return /^(0|[1-9]\d*)$/.test(entry[0]) && Number(entry[0]) < count && validate(entry[1], Number(entry[0]));
+      });
+  };
+  if (!data || !uniqueRecords(data.debts) || !data.debts.every(function(d) {
+    const count = d.installmentCount ?? 1;
     return validRecord(d) && validCurrency(d) && typeof d.name === 'string' && validDate(d.startDate)
       && validAmount(d.installmentAmount ?? d.totalAmount)
-      && Number.isInteger(d.installmentCount ?? 1) && (d.installmentCount ?? 1) >= 1 && (d.installmentCount ?? 1) <= 120
-      && (!d.installmentOverrides || Object.values(d.installmentOverrides).every(function(o) {
-        return o && (o.amount == null || validAmount(o.amount)) && (o.dueDate == null || validDate(o.dueDate));
-      }))
-      && (!d.partials || Object.values(d.partials).every(validAmount));
+      && (d.totalAmount === undefined || validAmount(d.totalAmount))
+      && Number.isInteger(count) && count >= 1 && count <= 120
+      && Number.isInteger(d.paidInstallments ?? 0) && (d.paidInstallments ?? 0) >= 0 && (d.paidInstallments ?? 0) <= count
+      && (d.paymentModel === undefined || d.paymentModel === 1)
+      && validMap(d.installmentOverrides, count, function(o) {
+        return o && typeof o === 'object' && !Array.isArray(o) && (o.amount == null || validAmount(o.amount)) && (o.dueDate == null || validDate(o.dueDate));
+      })
+      && validMap(d.partials, count, function(value, index) { return validAmount(value) && value <= installmentFullAmount(d, index); });
   })) throw new Error(t('Geçersiz borç kayıtları'));
-  if (!(data.incomes === undefined || Array.isArray(data.incomes) && data.incomes.every(function(i) {
+  if (!(data.incomes === undefined || uniqueRecords(data.incomes) && data.incomes.every(function(i) {
     return validRecord(i) && validCurrency(i) && typeof i.name === 'string' && validAmount(i.amount)
+      && (i.type === undefined || i.type === 'once' || i.type === 'recurring')
       && (!i.startMonth || validMonth(i.startMonth)) && (i.type !== 'once' || validDate(i.date || i.startMonth + '-01'));
-  })) || !(data.adjustments === undefined || Array.isArray(data.adjustments) && data.adjustments.every(function(a) {
+  })) || !(data.adjustments === undefined || uniqueRecords(data.adjustments) && data.adjustments.every(function(a) {
     return validRecord(a) && validCurrency(a) && validAmount(a.amount) && validMonth(a.monthKey);
-  })) || !(data.payments === undefined || Array.isArray(data.payments) && data.payments.every(function(p) {
-    return validRecord(p) && validCurrency(p) && typeof p.debtId === 'string' && typeof p.debtName === 'string'
-      && Number.isInteger(p.installmentIndex) && p.installmentIndex >= 0 && validAmount(p.amount)
+  })) || !(data.payments === undefined || uniqueRecords(data.payments) && data.payments.every(function(p) {
+    return validRecord(p) && validCurrency(p) && validId(p.debtId) && typeof p.debtName === 'string'
+      && Number.isInteger(p.installmentIndex) && p.installmentIndex >= 0 && p.installmentIndex < 120 && validAmount(p.amount) && p.amount > 0
+      && (p.source === undefined || p.source === 'salary' || p.source === 'extra') && (p.adjustmentId == null || validId(p.adjustmentId))
       && validDate(p.dueDate) && typeof p.paidAt === 'string' && Number.isFinite(Date.parse(p.paidAt));
   })) || !(data.hiddenNames === undefined || Array.isArray(data.hiddenNames) && data.hiddenNames.every(function(n) { return typeof n === 'string'; }))) {
     throw new Error(t('Geçersiz yedek kayıtları'));
   }
+  if (!skipRelations) {
+    const debtMap = new Map(data.debts.map(function(d) { return [d.id, d]; }));
+    const adjustmentMap = new Map((data.adjustments || []).map(function(a) { return [a.id, a]; }));
+    const usedAdjustments = new Set();
+    (data.payments || []).forEach(function(p) {
+      const debt = debtMap.get(p.debtId);
+      // Payments for deleted debts remain valid archive entries.
+      if (debt && (p.installmentIndex >= (debt.installmentCount || 1) || (p.currency || 'TRY') !== (debt.currency || 'TRY'))) throw new Error(t('Geçersiz yedek kayıtları'));
+      if (p.adjustmentId) {
+        const adjustment = adjustmentMap.get(p.adjustmentId);
+        if (!adjustment || usedAdjustments.has(p.adjustmentId) || p.source !== 'salary' || adjustment.amount !== p.amount
+          || (adjustment.currency || 'TRY') !== (p.currency || 'TRY') || adjustment.monthKey !== p.dueDate.substring(0, 7)) throw new Error(t('Geçersiz yedek kayıtları'));
+        usedAdjustments.add(p.adjustmentId);
+      }
+    });
+  }
   return { ...data, incomes: data.incomes || [], adjustments: data.adjustments || [], payments: data.payments || [], hiddenNames: data.hiddenNames || [] };
 }
 function importData(event) {
+  if (restoreLocked) { showToast(t('Kayıtların yükleniyor…')); event.target.value = ''; return; }
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
+    if (restoreLocked) { showToast(t('Kayıtların yükleniyor…')); return; }
     try {
       const data = validateBackup(JSON.parse(e.target.result));
-      if (hasLocalSyncData()) {
+      if (hasLocalSyncData() || storageReadOnly) {
         if (!confirm(t('Dosyadaki {debts} borç ve {incomes} gelir kaydı telefondaki mevcut kayıtların yerini alacak. Devam edilsin mi?', { debts: data.debts.length, incomes: data.incomes.length }))) return;
       }
-      applySyncPayload(data);
-      markSyncDirty();
+      if (!applySyncPayload(data, { dirty: true, replaceDamaged: true })) return;
       updateSyncUI();
       showToast(t('Veriler yüklendi'));
       renderAll();
@@ -1189,17 +1363,17 @@ function importData(event) {
   closeSettings();
 }
 function clearAllData() {
+  if (restoreLocked || syncWriteBlocked) { canChangeRecords(); return; }
   if (syncRunning) { showToast(t('Eşitlemenin bitmesini bekle')); return; }
   if (!confirm(t('Telefondaki kayıtlar silinecek, Drive yedeği korunacak. Otomatik eşitleme duraklatılacak. Devam edilsin mi?'))) return;
-  setSyncMeta({ paused: true, dirty: false, baseline: null, lastSync: null });
-      applySyncPayload({ debts: [], incomes: [], adjustments: [], payments: [], hiddenNames: [] });
+  if (!applySyncPayload({ debts: [], incomes: [], adjustments: [], payments: [], hiddenNames: [] }, { replaceDamaged: storageReadOnly, syncMeta: { paused: true, dirty: false, baseline: null, lastSync: null } })) return;
   updateSyncUI();
   showToast(t('Telefon kayıtları silindi'));
 }
 function requestNotifPermission() {
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
     window.Capacitor.Plugins.LocalNotifications.requestPermissions().then(function(res) {
-      if (res.display === 'granted') { showToast(t('Bildirim izni verildi')); scheduleDueNotifications(); }
+      if (res.display === 'granted') { showToast(t('Bildirim izni verildi')); scheduleDueNotifications(true); }
       else showToast(t('İzin reddedildi'));
     }).catch(function() { showToast(t('Bildirim desteklenmiyor')); });
   } else {
@@ -1207,29 +1381,61 @@ function requestNotifPermission() {
   }
   closeSettings();
 }
-function scheduleDueNotifications() {
-  if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.LocalNotifications) return;
-  const LocalNotifications = window.Capacitor.Plugins.LocalNotifications;
-  LocalNotifications.cancel({ notifications: [{ id: 1 }, { id: 2 }, { id: 3 }] }).catch(function() {});
-  const today = todayStr();
-  const dueToday = getActiveInstallments().filter(function(i) { return i.dueDate === today; });
-  if (dueToday.length === 0) return;
-  const body = dueToday.map(function(i) { return i.name + ': ' + formatMoney(i.amount, i.currency); }).join(', ');
-  LocalNotifications.schedule({
-    notifications: [{ id: 1, title: t('Bugün ödenecek borçlar'), body: body, schedule: { at: new Date(Date.now() + 2000) }, sound: undefined, attachments: undefined, actionTypeId: '', extra: null }]
-  }).catch(function(e) { console.log('notif', e); });
-}
-const STORAGE_HIDDEN_NAMES = 'borc_takip_hidden_names';
-const STORAGE_SYNC_WELCOME = 'borc_takip_sync_welcome_seen';
-let hiddenNames = [];
-function loadHiddenNames() {
-  try { hiddenNames = JSON.parse(localStorage.getItem(STORAGE_HIDDEN_NAMES) || '[]'); }
-  catch (e) { hiddenNames = []; }
-  if (!Array.isArray(hiddenNames)) hiddenNames = [];
-}
-function saveHiddenNames() {
-  localStorage.setItem(STORAGE_HIDDEN_NAMES, JSON.stringify(hiddenNames));
-  markSyncDirty();
+const STORAGE_NOTIFICATION_PLAN = 'borc_takip_notification_plan';
+let notificationQueue = Promise.resolve();
+function scheduleDueNotifications(forceToday) {
+  notificationQueue = notificationQueue.then(async function() {
+    const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    if (!plugin || storageReadOnly) return false;
+    if (plugin.checkPermissions && (await plugin.checkPermissions()).display !== 'granted') return false;
+    const pending = plugin.getPending ? (await plugin.getPending()).notifications || [] : [];
+    let history;
+    try { history = JSON.parse(localStorage.getItem(STORAGE_NOTIFICATION_PLAN) || '{}'); } catch (error) { history = {}; }
+    if (!history || typeof history !== 'object' || Array.isArray(history)) history = {};
+    const today = todayStr();
+    const groups = new Map();
+    getActiveInstallments().forEach(function(item) {
+      if (item.dueDate < today) return;
+      if (!groups.has(item.dueDate)) groups.set(item.dueDate, []);
+      groups.get(item.dueDate).push(item);
+    });
+    const desired = new Map();
+    const nextHistory = {};
+    Array.from(groups.keys()).sort().forEach(function(date) {
+      const id = Number(date.replace(/-/g, ''));
+      const existing = pending.find(function(n) { return n.id === id; });
+      const morning = new Date(date + 'T09:00:00');
+      let at = morning;
+      if (at.getTime() <= Date.now()) {
+        // A previously planned date that is no longer pending has already elapsed.
+        if (!forceToday && !existing && Number(history[date]) > 0 && Number(history[date]) <= Date.now()) {
+          nextHistory[date] = history[date]; return;
+        }
+        at = existing && Number(history[date]) > Date.now() ? new Date(Number(history[date])) : new Date(Date.now() + 5000);
+      }
+      const title = t('Bugün ödenecek borçlar');
+      const body = groups.get(date).map(function(item) { return item.name + ': ' + formatMoney(item.amount, item.currency); }).join(', ');
+      const fingerprint = JSON.stringify([date, title, body, morning.getTime()]);
+      nextHistory[date] = at.getTime();
+      desired.set(id, { id: id, title: title, body: body, schedule: { at: at, allowWhileIdle: true }, extra: { owner: 'borc-takip', dueDate: date, fingerprint: fingerprint } });
+    });
+    const obsolete = pending.filter(function(n) {
+      return (n.extra && n.extra.owner === 'borc-takip' || [1, 2, 3].includes(n.id))
+        && (!desired.has(n.id) || !n.extra || n.extra.fingerprint !== desired.get(n.id).extra.fingerprint);
+    });
+    if (obsolete.length) await plugin.cancel({ notifications: obsolete.map(function(n) { return { id: n.id }; }) });
+    const fresh = Array.from(desired.values()).filter(function(n) {
+      return !pending.some(function(p) { return p.id === n.id && p.extra && p.extra.fingerprint === n.extra.fingerprint; });
+    });
+    if (fresh.length) await plugin.schedule({ notifications: fresh });
+    try { localStorage.setItem(STORAGE_NOTIFICATION_PLAN, JSON.stringify(nextHistory)); } catch (error) { /* Notification delivery does not depend on this duplicate guard. */ }
+    return true;
+  }).catch(function(error) {
+    console.log('notif', error);
+    showToast(t('Bildirimler planlanamadı. Bildirim iznini kontrol edin.'));
+    return false;
+  });
+  return notificationQueue;
 }
 
 // ==================== GOOGLE DRIVE EŞİTLEME ====================
@@ -1237,21 +1443,14 @@ let syncTimer = null;
 let syncRunning = false;
 let syncAgain = false;
 function getSyncMeta() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_SYNC_META) || '{}'); }
-  catch (e) { return {}; }
+  return Object.assign({}, syncMeta);
 }
 function setSyncMeta(patch) {
   const meta = Object.assign({}, getSyncMeta(), patch || {});
-  localStorage.setItem(STORAGE_SYNC_META, JSON.stringify(meta));
-  updateSyncUI();
-  return meta;
+  return persistState(Object.assign({}, currentState(), { syncMeta: meta })) ? meta : false;
 }
 function markSyncDirty() {
-  const meta = getSyncMeta();
-  setSyncMeta({ dirty: true, revision: (meta.revision || 0) + 1, updatedAt: new Date().toISOString() });
-  if (!meta.signedIn || meta.paused) return;
-  if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(function() { syncNow(false); }, 1200);
+  return commitData({});
 }
 function googleAuthPlugin() {
   return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.GoogleDriveAuth;
@@ -1271,7 +1470,8 @@ function updateSyncUI() {
   }
   signIn.classList.add('hidden'); sync.classList.remove('hidden'); signOut.classList.remove('hidden');
   sync.textContent = t(meta.paused ? 'Eşitlemeyi başlat' : 'Şimdi eşitle');
-  if (meta.paused) status.textContent = t('Otomatik eşitleme duraklatıldı');
+  if (restoreLocked) status.textContent = t('Kayıtların yükleniyor…');
+  else if (meta.paused) status.textContent = t('Otomatik eşitleme duraklatıldı');
   else if (meta.error) status.textContent = t('Eşitleme başarısız · Yeniden dene');
   else if (!navigator.onLine || meta.dirty) status.textContent = t('Eşitleme bekliyor');
   else if (meta.lastSync) status.textContent = t('Eşitlendi · {date}', { date: new Date(meta.lastSync).toLocaleString(getLocale()) });
@@ -1292,19 +1492,10 @@ function buildSyncPayload() {
 function hasLocalSyncData() {
   return debts.length > 0 || incomes.length > 0 || adjustments.length > 0 || payments.length > 0 || hiddenNames.length > 0;
 }
-function applySyncPayload(data) {
-  if (!data || !Array.isArray(data.debts)) return false;
-  debts = data.debts || [];
-  incomes = data.incomes || [];
-  adjustments = data.adjustments || [];
-  payments = data.payments || [];
-  hiddenNames = data.hiddenNames || [];
-  localStorage.setItem(STORAGE_DEBTS, JSON.stringify(debts));
-  localStorage.setItem(STORAGE_INCOMES, JSON.stringify(incomes));
-  localStorage.setItem(STORAGE_ADJUST, JSON.stringify(adjustments));
-  localStorage.setItem(STORAGE_PAYMENTS, JSON.stringify(payments));
-  localStorage.setItem(STORAGE_HIDDEN_NAMES, JSON.stringify(hiddenNames));
-  loadData();
+function applySyncPayload(data, options) {
+  options = Object.assign({ dirty: false, fromSync: true }, options || {});
+  const normalized = normalizeRecords(validateBackup(data));
+  if (!commitData({ debts: normalized.debts, incomes: normalized.incomes, adjustments: normalized.adjustments, payments: normalized.payments, hiddenNames: normalized.hiddenNames }, options)) return false;
   renderAll();
   scheduleDueNotifications();
   return true;
@@ -1312,9 +1503,14 @@ function applySyncPayload(data) {
 async function driveRequest(url, options, token) {
   options = options || {};
   options.headers = Object.assign({}, options.headers || {}, { Authorization: 'Bearer ' + token });
-  const response = await fetch(url, options);
-  if (!response.ok) throw new Error('Drive yanıtı: ' + response.status);
-  return response;
+  const controller = new AbortController();
+  const timer = setTimeout(function() { controller.abort(); }, 20000);
+  try {
+    const response = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+    if (!response.ok) throw new Error('Drive yanıtı: ' + response.status);
+    const payload = response.status === 204 ? null : await response.json();
+    return { json: async function() { return payload; } };
+  } finally { clearTimeout(timer); }
 }
 async function findDriveFiles(token, all) {
   const q = "name='" + DRIVE_FILE_NAME + "'";
@@ -1371,22 +1567,20 @@ function googleSignIn() {
 async function continueGoogleSignIn() {
   closeDrivePermission();
   const plugin = googleAuthPlugin();
-  if (!plugin || syncRunning) { showToast(t('Google girişi şu anda kullanılamıyor')); return; }
+  if (!plugin || syncRunning || !canChangeRecords()) { showToast(t('Google girişi şu anda kullanılamıyor')); return; }
   syncRunning = true;
+  setRestoreLock(true);
   let connected = false;
   try {
     showToast(t('Google hesabı açılıyor…'));
     const auth = await plugin.signIn();
     const meta = getSyncMeta();
     if (!auth.email) throw new Error('Google hesabı belirlenemedi');
-    if (meta.account !== auth.email) {
-      setSyncMeta({ account: auth.email, baseline: null, lastSync: null });
-    }
-    setSyncMeta({ signedIn: true, paused: false, error: false, baseline: null });
+    if (!setSyncMeta({ signedIn: true, account: auth.email, paused: false, error: false, baseline: null, lastSync: meta.account === auth.email ? meta.lastSync : null })) return;
     connected = true;
   } catch (e) { showToast(t('Google girişi tamamlanamadı')); }
-  finally { syncRunning = false; }
-  if (connected) await syncNow(true);
+  finally { syncRunning = false; if (!connected) setRestoreLock(false); }
+  try { if (connected) await syncNow(true); } finally { setRestoreLock(false); }
 }
 async function googleSignOut() {
   const plugin = googleAuthPlugin();
@@ -1394,7 +1588,8 @@ async function googleSignOut() {
   syncRunning = true;
   try {
     if (plugin) await plugin.signOut();
-    setSyncMeta({ signedIn: false, paused: true, baseline: null });
+    if (!setSyncMeta({ signedIn: false, paused: true, baseline: null })) return;
+    syncWriteBlocked = false;
     showToast(t('Google hesabından çıkış yapıldı'));
   } catch (e) { showToast(t('Google hesabından çıkış yapılamadı')); }
   finally { syncRunning = false; }
@@ -1416,12 +1611,13 @@ async function deleteDuplicateDriveFiles(token, files, keepId) {
 async function syncNow(manual) {
   let meta = getSyncMeta();
   const plugin = googleAuthPlugin();
-  if (!meta.signedIn || !plugin || (meta.paused && !manual)) return;
+  if (!meta.signedIn || !plugin || storageReadOnly || (meta.paused && !manual)) return;
   if (syncRunning) { syncAgain = true; return; }
   if (!navigator.onLine) { if (manual) showToast(t('Eşitlemek için internet bağlantısı gerekiyor')); return; }
   syncRunning = true;
+  if (!meta.baseline || meta.paused) setRestoreLock(true);
   try {
-    if (meta.paused) setSyncMeta({ paused: false, baseline: null });
+    if (meta.paused && !setSyncMeta({ paused: false, baseline: null })) return;
     const auth = await plugin.getToken();
     if (!auth.email || !auth.accessToken || (meta.account && meta.account !== auth.email)) {
       throw new Error('Google hesabını yeniden bağla');
@@ -1440,14 +1636,18 @@ async function syncNow(manual) {
     let baseline = version;
     let restored = false;
     if (remote && !same && (firstConnection || (!meta.dirty && remoteChanged))) {
-      applySyncPayload(remote);
+      if (!applySyncPayload(remote, { syncMeta: { account: auth.email, baseline: version, dirty: false, error: false, lastSync: new Date().toISOString() } })) throw new Error('Restore could not be saved');
       restored = true;
     } else if (!same && (meta.dirty || (!remote && localExists))) {
       baseline = driveVersion(await uploadDrivePayload(token, file?.id, local));
     }
     if (files.length > 1) await deleteDuplicateDriveFiles(token, files, file && file.id);
     const editedWhileUploading = meta.revision !== getSyncMeta().revision;
-    setSyncMeta({ account: auth.email, baseline: baseline, dirty: editedWhileUploading, error: false, lastSync: new Date().toISOString() });
+    if (!restored && !setSyncMeta({ account: auth.email, baseline: baseline, dirty: editedWhileUploading, error: false, lastSync: new Date().toISOString() })) {
+      syncWriteBlocked = true;
+      throw new Error('Sync metadata could not be saved');
+    }
+    syncWriteBlocked = false;
     syncAgain = syncAgain || editedWhileUploading;
     if (manual || restored) showToast(t(restored ? 'Drive yedeği geri yüklendi' : 'Google Drive ile eşitlendi'));
   } catch (e) {
@@ -1456,6 +1656,7 @@ async function syncNow(manual) {
     if (manual) showToast(t('Eşitleme yapılamadı · Bağlantıyı ve Drive iznini kontrol et'));
   } finally {
     syncRunning = false;
+    setRestoreLock(false);
     if (syncAgain) {
       syncAgain = false;
       syncNow(false);
@@ -1465,11 +1666,11 @@ async function syncNow(manual) {
 async function deleteDriveBackup() {
   const meta = getSyncMeta();
   const plugin = googleAuthPlugin();
-  if (!meta.signedIn || !plugin || syncRunning) { showToast(t('Eşitlemenin bitmesini bekle')); return; }
+  if (!meta.signedIn || !plugin || syncRunning || !canChangeRecords()) { showToast(t('Eşitlemenin bitmesini bekle')); return; }
   if (!navigator.onLine) { showToast(t('Drive yedeğini silmek için internete bağlan')); return; }
   if (!confirm(t('Bağlı Google hesabındaki Borç Takip yedeği kalıcı olarak silinecek. Telefonda bulunan kayıtlar korunacak ve otomatik eşitleme duraklatılacak. Devam edilsin mi?'))) return;
+  if (!setSyncMeta({ paused: true, baseline: null, lastSync: null })) return;
   syncRunning = true;
-  setSyncMeta({ paused: true, baseline: null, lastSync: null });
   try {
     const auth = await plugin.getToken();
     if (!auth.email || (meta.account && meta.account !== auth.email)) throw new Error('Google hesabını yeniden bağla');
@@ -1491,10 +1692,10 @@ function isNameHidden(name) {
 }
 function getSavedNames() {
   const names = [];
-  const seen = {};
+  const seen = new Set();
   debts.forEach(function(d) {
-    if (d.name && !seen[d.name] && !isNameHidden(d.name)) {
-      seen[d.name] = true;
+    if (d.name && !seen.has(d.name) && !isNameHidden(d.name)) {
+      seen.add(d.name);
       names.push(d.name);
     }
   });
@@ -1502,14 +1703,13 @@ function getSavedNames() {
   return names;
 }
 function removeSavedName(name) {
-  if (!name) return;
-  if (hiddenNames.indexOf(name) < 0) hiddenNames.push(name);
-  saveHiddenNames();
+  if (!name || !canChangeRecords()) return;
+  if (hiddenNames.indexOf(name) < 0 && !commitData({ hiddenNames: hiddenNames.concat([name]) })) return;
   showToast(t('İsim listeden kaldırıldı'));
   openNamePicker();
 }
 function openNamePicker() {
-  loadHiddenNames();
+  if (!canChangeRecords()) return;
   const list = document.getElementById('name-picker-list');
   const empty = document.getElementById('name-picker-empty');
   list.innerHTML = '';
@@ -1548,6 +1748,48 @@ function openNamePicker() {
   document.getElementById('modal-name-picker').classList.remove('hidden');
 }
 function closeNamePicker() { document.getElementById('modal-name-picker').classList.add('hidden'); }
+let pageScrollLocked = false;
+let pageScrollTop = 0;
+function updatePageScrollLock() {
+  const open = Array.from(document.querySelectorAll('[id^="modal-"]')).some(function(modal) { return !modal.classList.contains('hidden'); });
+  if (open === pageScrollLocked) return;
+  pageScrollLocked = open;
+  if (open) {
+    pageScrollTop = window.scrollY || 0;
+    document.body.style.setProperty('--locked-scroll-top', -pageScrollTop + 'px');
+    document.documentElement.classList.add('page-locked');
+    document.body.classList.add('page-locked');
+  } else {
+    document.documentElement.classList.remove('page-locked');
+    document.body.classList.remove('page-locked');
+    window.scrollTo(0, pageScrollTop);
+  }
+}
+function initializeModalScrollLock() {
+  const observer = new MutationObserver(updatePageScrollLock);
+  document.querySelectorAll('[id^="modal-"]').forEach(function(modal) { observer.observe(modal, { attributes: true, attributeFilter: ['class'] }); });
+  updatePageScrollLock();
+}
+function setRestoreLock(locked) {
+  restoreLocked = locked;
+  document.getElementById('modal-sync-progress').classList.toggle('hidden', !locked);
+  updateSyncUI();
+}
+function closeTopModal() {
+  if (restoreLocked) return true;
+  const handlers = [
+    ['modal-drive-permission', closeDrivePermission], ['modal-debt-saved', closeDebtSavedModal],
+    ['modal-sync-welcome', dismissSyncWelcome], ['modal-edit-scope', cancelDebtScope],
+    ['modal-pay-source', closePaySourceModal], ['modal-name-picker', closeNamePicker],
+    ['modal-partial', closePartialModal], ['modal-payment-history', closePaymentHistory],
+    ['modal-legal', closeLegalInfo], ['modal-debt', closeDebtModal], ['modal-income', closeIncomeModal],
+    ['modal-month-debts', closeMonthDebtsModal], ['modal-months', closeMonthsModal], ['modal-settings', closeSettings]
+  ];
+  for (const entry of handlers) {
+    if (!document.getElementById(entry[0]).classList.contains('hidden')) { entry[1](); return true; }
+  }
+  return false;
+}
 function hideSplash() {
   const splash = document.getElementById('splash');
   const root = document.getElementById('app-root');
@@ -1565,24 +1807,17 @@ function hideSplash() {
 }
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
   window.Capacitor.Plugins.App.addListener('appStateChange', function(state) {
-    if (state && state.isActive) { syncNow(false); refreshRates(); }
+    if (state && state.isActive) { syncNow(false); refreshRates(); scheduleDueNotifications(); }
   });
   window.Capacitor.Plugins.App.addListener('backButton', function(e) {
-    const modals = ['modal-drive-permission', 'modal-sync-welcome', 'modal-debt-saved', 'modal-edit-scope', 'modal-debt', 'modal-income', 'modal-partial', 'modal-pay-source', 'modal-settings', 'modal-payment-history', 'modal-legal', 'modal-months', 'modal-month-debts', 'modal-name-picker'];
-    for (let i = 0; i < modals.length; i++) {
-      const m = document.getElementById(modals[i]);
-      if (m && !m.classList.contains('hidden')) {
-        m.classList.add('hidden');
-        if (modals[i] === 'modal-partial' || modals[i] === 'modal-pay-source') pendingPay = null;
-        e.canGoBack = false;
-        return;
-      }
-    }
+    if (closeTopModal()) e.canGoBack = false;
   });
 }
 document.addEventListener('DOMContentLoaded', function() {
   BorcI18n.init();
+  initializeModalScrollLock();
   loadData();
+  document.addEventListener('keydown', function(event) { if (event.key === 'Escape' && closeTopModal()) event.preventDefault(); });
   try { rateCache = JSON.parse(localStorage.getItem('borc_takip_rate_cache')); } catch (e) { rateCache = null; }
   updateRateInfo();
   refreshRates();
@@ -1605,7 +1840,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btn-add-month-debt').addEventListener('click', function() {
     const monthKey = selectedMonthContext;
     document.getElementById('modal-month-debts').classList.add('hidden');
-    openDebtModal(null, null, monthKey);
+    openDebtModal(null, null, monthKey, true);
   });
   document.getElementById('btn-add-income').addEventListener('click', openIncomeModal);
   document.getElementById('btn-settings').addEventListener('click', openSettings);
