@@ -17,7 +17,22 @@
     body.app-ready { background: #f3f4f6; }
     .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06); }
     .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 20px); }
-    .content-safe-bottom { padding-bottom: calc(8.5rem + max(env(safe-area-inset-bottom), 20px)); }
+    .content-safe-bottom { padding-bottom: calc(var(--bottom-actions-height, 8.5rem) + 1rem); }
+    #bottom-actions button { min-width: 0; line-height: 1.35; }
+    #summary-grid > div { min-width: 0; overflow-wrap: anywhere; }
+    #debt-name { min-width: 0; }
+    #debt-list button, #month-debts-list button { touch-action: manipulation; }
+    #debt-list > div > div { flex-wrap: wrap; }
+    #debt-list > div > div > div:last-child { max-width: 100%; }
+    #income-list > div > div:first-child { min-width: 0; }
+    #income-list > div > div:first-child > div:last-child { min-width: 0; overflow-wrap: anywhere; }
+    #income-list > div { gap: 0.5rem; flex-wrap: wrap; }
+    #modal-income > div:last-child, #modal-partial > div:last-child,
+    #modal-pay-source > div:last-child, #modal-edit-scope > div:last-child {
+      max-height: 92vh; max-height: 92dvh; overflow-y: auto;
+    }
+    #modal-debt-saved > div:last-child, #modal-sync-welcome > div:last-child,
+    #modal-drive-permission > div:last-child { max-height: 92vh; max-height: 92dvh; overflow-y: auto; }
     input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
     .fade-in { animation: fadeIn 0.25s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -150,7 +165,7 @@
     </section>
   </main>
 
-  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 safe-bottom z-30">
+  <div id="bottom-actions" class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 safe-bottom z-30">
     <div class="max-w-lg mx-auto grid grid-cols-2 gap-3">
       <button id="btn-add-debt" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
         <i class="fas fa-plus"></i> Borç Ekle
@@ -316,6 +331,16 @@
     <div class="absolute bottom-0 left-0 right-0 max-h-[90vh] overflow-y-auto bg-white rounded-t-3xl p-5 slide-up">
       <h2 class="font-bold text-lg mb-4">Ayarlar</h2>
       <div class="space-y-3">
+        <div class="rounded-xl bg-gray-50 p-3">
+          <label for="app-language" class="block text-sm font-semibold text-gray-900 mb-2">Dil</label>
+          <select id="app-language" onchange="changeAppLanguage(this.value)" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white text-base focus:ring-2 focus:ring-blue-500 outline-none" data-i18n-ignore>
+            <option value="tr">Türkçe</option>
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+            <option value="ru">Русский</option>
+          </select>
+          <p class="mt-2 text-xs text-gray-500">Dil değişikliği hemen uygulanır ve bu cihazda saklanır.</p>
+        </div>
         <div class="rounded-xl border border-blue-100 bg-blue-50 p-3">
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -507,6 +532,7 @@
       }
     }, 1600);
   </script>
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

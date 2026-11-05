@@ -29,6 +29,7 @@ const context = vm.createContext({
   confirm() { return true; }, Intl, Date, Math, JSON, Object, Array, Number, String, Map, Set
 });
 const source = fs.readFileSync(require('path').join(__dirname, '..', 'app.js'), 'utf8');
+vm.runInContext(fs.readFileSync(require('path').join(__dirname, '..', 'i18n.js'), 'utf8'), context);
 vm.runInContext(source, context);
 
 const baseBackup = {

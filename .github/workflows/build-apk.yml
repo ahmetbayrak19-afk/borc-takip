@@ -37,9 +37,10 @@ jobs:
       - name: Create www directory and copy web assets
         run: |
           npm ci --no-audit --no-fund
+          npm test
           npm run build
           mkdir -p www
-          cp index.html app.js app.css www/
+          cp index.html i18n.js app.js app.css www/
           cp privacy.html terms.html www/
           mkdir -p www/vendor/fontawesome
           cp -R node_modules/@fortawesome/fontawesome-free/css www/vendor/fontawesome/
