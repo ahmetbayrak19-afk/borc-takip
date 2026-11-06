@@ -1,4 +1,4 @@
-package com.borctakip.app;
+package com.ahmetbayrak19.borctakip;
 
 import android.accounts.Account;
 import android.app.Activity;

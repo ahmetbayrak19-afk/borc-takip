@@ -66,7 +66,7 @@ jobs:
 
       - name: Add Google Drive authentication plugin
         run: |
-          JAVA_DIR="android/app/src/main/java/com/borctakip/app"
+          JAVA_DIR="android/app/src/main/java/com/ahmetbayrak19/borctakip"
           mkdir -p "$JAVA_DIR"
           cp android-plugins/GoogleDriveAuthPlugin.java "$JAVA_DIR/GoogleDriveAuthPlugin.java"
           cp android-plugins/MainActivity.java "$JAVA_DIR/MainActivity.java"

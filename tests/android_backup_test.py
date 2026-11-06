@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import tarfile
 import tempfile
@@ -36,6 +37,18 @@ class AndroidBackupTests(unittest.TestCase):
         modern = ET.parse(self.main / "res/xml/borc_data_extraction_rules.xml").getroot()
         policy.assert_excludes_all(modern.find("cloud-backup"))
         policy.assert_excludes_all(modern.find("device-transfer"))
+
+    def test_android_package_name_is_consistent(self):
+        expected = "com.ahmetbayrak19.borctakip"
+        config = json.loads((ROOT / "capacitor.config.json").read_text())
+        self.assertEqual(config["appId"], expected)
+        for source in ["MainActivity.java", "GoogleDriveAuthPlugin.java"]:
+            text = (ROOT / "android-plugins" / source).read_text()
+            self.assertIn(f"package {expected};", text)
+            self.assertNotIn("com.borctakip.app", text)
+        workflow = (ROOT / ".github/workflows/build-apk.yml").read_text()
+        self.assertIn("android/app/src/main/java/com/ahmetbayrak19/borctakip", workflow)
+        self.assertNotIn("java/com/borctakip/app", workflow)
 
     def test_rerunning_configuration_preserves_activity_provider_and_existing_records(self):
         private_data = self.app / "existing-records.json"

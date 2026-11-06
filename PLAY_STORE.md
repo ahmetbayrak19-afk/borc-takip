@@ -1,5 +1,7 @@
 # Borç Takip — Google Play yayın metinleri
 
+Paket adı: `com.ahmetbayrak19.borctakip`
+
 ## Kısa açıklama
 
 Borç, taksit, gelir ve ödeme tarihlerini sade bir ekranda takip edin.

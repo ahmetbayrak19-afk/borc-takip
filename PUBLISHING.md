@@ -16,6 +16,8 @@ Metin değişikliklerinde kök dizin ve docs kopyalarını birlikte güncelleyin
 
 ## 2. Güncel Android paketi
 
+Google Play paket adı `com.ahmetbayrak19.borctakip` olmalıdır. AAB yüklenmeden önce Play Console'daki uygulamanın bu paket adına ayrıldığı kontrol edilmelidir. Google Cloud'daki Android OAuth istemcileri de aynı paket adıyla oluşturulmalıdır; telefona doğrudan kurulan APK için sabit imza anahtarının SHA-1'i, Google Play'den dağıtılan sürüm için Play Console'daki uygulama imzalama sertifikasının SHA-1'i kullanılmalıdır.
+
 Ana dala gönderim Build Android APK iş akışını tetikler. Çalışmanın kaynak commit'inin son yayın hazırlığı commit'i olduğunu kontrol edin.
 
 Derleme başlamazsa:
