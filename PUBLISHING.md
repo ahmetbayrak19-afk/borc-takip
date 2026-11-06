@@ -18,6 +18,8 @@ Metin değişikliklerinde kök dizin ve docs kopyalarını birlikte güncelleyin
 
 Google Play paket adı `com.ahmetbayrak19.borctakip` olmalıdır. AAB yüklenmeden önce Play Console'daki uygulamanın bu paket adına ayrıldığı kontrol edilmelidir. Google Cloud'daki Android OAuth istemcileri de aynı paket adıyla oluşturulmalıdır; telefona doğrudan kurulan APK için sabit imza anahtarının SHA-1'i, Google Play'den dağıtılan sürüm için Play Console'daki uygulama imzalama sertifikasının SHA-1'i kullanılmalıdır.
 
+Android minimum SDK 24'tür (Android 7.0). Bu seviye Google Play otomatik korumasının AAB yükleme şartını karşılar.
+
 Ana dala gönderim Build Android APK iş akışını tetikler. Çalışmanın kaynak commit'inin son yayın hazırlığı commit'i olduğunu kontrol edin.
 
 Derleme başlamazsa:

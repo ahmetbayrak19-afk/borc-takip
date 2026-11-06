@@ -54,11 +54,12 @@ jobs:
         run: |
           npx cap add android || true
           npx cap sync android
+          sed -i -E 's/minSdkVersion = [0-9]+/minSdkVersion = 24/' android/variables.gradle
           sed -i -E 's/compileSdkVersion = [0-9]+/compileSdkVersion = 36/' android/variables.gradle
           sed -i -E 's/targetSdkVersion = [0-9]+/targetSdkVersion = 36/' android/variables.gradle
           sed -i -E "s/com.android.tools.build:gradle:[0-9.]+/com.android.tools.build:gradle:8.9.1/" android/build.gradle
           sed -i -E 's#gradle-[0-9.]+-all.zip#gradle-8.11.1-all.zip#' android/gradle/wrapper/gradle-wrapper.properties
-          grep -E 'compileSdkVersion|targetSdkVersion' android/variables.gradle
+          grep -E 'minSdkVersion|compileSdkVersion|targetSdkVersion' android/variables.gradle
           grep 'com.android.tools.build:gradle' android/build.gradle
 
       - name: Disable Android automatic backup and device transfer

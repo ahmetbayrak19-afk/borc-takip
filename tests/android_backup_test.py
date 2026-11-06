@@ -49,6 +49,7 @@ class AndroidBackupTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/build-apk.yml").read_text()
         self.assertIn("android/app/src/main/java/com/ahmetbayrak19/borctakip", workflow)
         self.assertNotIn("java/com/borctakip/app", workflow)
+        self.assertIn("s/minSdkVersion = [0-9]+/minSdkVersion = 24/", workflow)
 
     def test_rerunning_configuration_preserves_activity_provider_and_existing_records(self):
         private_data = self.app / "existing-records.json"

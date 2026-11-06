@@ -37,7 +37,7 @@ Testlerde üretilmiş örnek kayıtlar kullanıldı.
 | Mevcut mantık testi | Geçti |
 | Node mantık/dil/düzeltme testleri | 56/56 geçti |
 | A01–A09 hata tekrar kontrolleri | 9/9 geçti; artık npm test içinde zorunlu |
-| Android paket/yedek politikası testleri | 5/5 geçti; `com.ahmetbayrak19.borctakip` kimliği, gerçek Capacitor manifest şablonu, tekrar çalıştırma, bileşenlerin korunması ve eksik kuralların reddi |
+| Android paket/yedek politikası testleri | 5/5 geçti; `com.ahmetbayrak19.borctakip` kimliği, Play koruması için minimum SDK 24, gerçek Capacitor manifest şablonu, tekrar çalıştırma, bileşenlerin korunması ve eksik kuralların reddi |
 | Gerçek Chromium senaryoları | 64/64 geçti |
 | Saat dilimleri | UTC ve Europe/Istanbul; tarih, ödeme, eşitleme ve bildirim senaryoları ayrıca America/Los_Angeles |
 | Üretim CSS derlemesi | npm run build geçti |
