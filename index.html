@@ -30,15 +30,19 @@
     #debt-list button, #month-debts-list button { touch-action: manipulation; }
     #debt-list > div > div { flex-wrap: wrap; }
     #debt-list > div > div > div:last-child { max-width: 100%; }
-    #income-list > div > div:first-child { min-width: 0; }
-    #income-list > div > div:first-child > div:last-child { min-width: 0; overflow-wrap: anywhere; }
-    #income-list > div { gap: 0.5rem; flex-wrap: wrap; }
+    .income-card { display: grid; grid-template-columns: 2.5rem minmax(0,1fr) auto 1.75rem; grid-template-areas: 'icon name amount remove' 'icon meta meta remove'; column-gap: 0.625rem; row-gap: 0.15rem; align-items: center; }
+    .income-icon { grid-area: icon; }
+    .income-name { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .income-meta { grid-area: meta; min-width: 0; overflow-wrap: anywhere; }
+    .income-amount { grid-area: amount; white-space: nowrap; font-size: clamp(0.8125rem,3.7vw,1rem); font-variant-numeric: tabular-nums; text-align: right; unicode-bidi: isolate; }
+    .income-delete { grid-area: remove; width: 1.75rem; height: 2.5rem; }
+    @media(max-width:360px) { .income-card { grid-template-columns: 2.5rem minmax(0,1fr) 1.75rem; grid-template-areas: 'icon name remove' 'icon amount remove' 'icon meta remove'; } .income-amount { text-align: left; } }
     #modal-income > div:last-child, #modal-partial > div:last-child,
     #modal-pay-source > div:last-child, #modal-edit-scope > div:last-child {
       max-height: 92vh; max-height: 92dvh; overflow-y: auto;
     }
     #modal-debt-saved > div:last-child, #modal-sync-welcome > div:last-child,
-    #modal-drive-permission > div:last-child { max-height: 92vh; max-height: 92dvh; overflow-y: auto; }
+    #modal-drive-permission > div:last-child, #modal-confirm > div:last-child { max-height: 92vh; max-height: 92dvh; overflow-y: auto; }
     input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }
     .fade-in { animation: fadeIn 0.25s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -409,8 +413,8 @@
       <h2 class="font-bold text-xl text-gray-900">Borçların kaybolmasın</h2>
       <p class="text-sm text-gray-600 mt-2 leading-6">Kayıtlarını kendi Google Drive hesabında güvenle saklayabilir ve başka telefonda geri getirebilirsin. Değişiklikler internet olduğunda otomatik eşitlenir.</p>
       <button onclick="acceptSyncWelcome()" class="w-full mt-5 rounded-xl bg-blue-600 text-white py-3 font-semibold">Google Drive ile eşitle</button>
-      <button onclick="dismissSyncWelcome()" class="w-full mt-2 py-3 text-gray-500 font-medium">Şimdilik kullanma</button>
-      <p class="text-[11px] text-center text-gray-400 mt-2">İsteğe bağlıdır. Daha sonra Ayarlar’dan açabilirsin.</p>
+      <button onclick="dismissSyncWelcome()" class="w-full mt-2 py-3 text-gray-500 font-medium">Bu telefonda kullan</button>
+      <p class="text-xs text-center text-gray-500 mt-2">Google ile bağlanmazsan kayıtlar yalnızca bu telefonda tutulur. Uygulamayı kaldırınca silinir; saklamak için verilerini dışa aktarabilirsin.</p>
     </div>
   </div>
 
@@ -526,6 +530,18 @@
 
   </div>
 
+  <div id="modal-confirm" class="fixed inset-0 z-[75] hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div class="absolute inset-0 bg-black/50" onclick="resolveConfirmation(false)"></div>
+    <div id="confirm-panel" class="absolute left-5 right-5 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-white rounded-3xl p-6 shadow-2xl border border-blue-100">
+      <div id="confirm-icon" class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl mb-4"><i class="fas fa-trash-alt" aria-hidden="true"></i></div>
+      <h2 id="confirm-title" class="text-lg font-bold text-gray-900">Silme onayı</h2>
+      <p id="confirm-message" class="text-sm text-gray-600 mt-2 leading-6" style="overflow-wrap:anywhere"></p>
+      <div class="grid grid-cols-2 gap-3 mt-5">
+        <button id="confirm-cancel" type="button" onclick="resolveConfirmation(false)" class="rounded-xl border border-gray-200 bg-gray-50 py-3 px-3 font-semibold text-gray-600">İptal</button>
+        <button id="confirm-accept" type="button" onclick="resolveConfirmation(true)" class="rounded-xl bg-blue-600 text-white py-3 px-3 font-semibold">Sil</button>
+      </div>
+    </div>
+  </div>
   <div id="modal-sync-progress" class="fixed inset-0 z-[80] hidden" role="status" aria-live="polite" aria-busy="true">
     <div class="absolute inset-0 bg-black/50"></div>
     <div class="absolute left-5 right-5 top-1/2 -translate-y-1/2 max-w-sm mx-auto bg-white rounded-2xl p-6 text-center shadow-xl">

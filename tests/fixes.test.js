@@ -23,7 +23,7 @@ function notifier(app, initial = [], permission = 'granted') {
   return { pending, scheduled, canceled };
 }
 
-test('A01/A02: migrate legacy paid installments once, keep overrides, and survive restart plus undo', () => {
+test('A01/A02: migrate legacy paid installments once, keep overrides, and survive restart plus undo', async () => {
   const old = debt({ installmentCount: 4, totalAmount: 380, paidInstallments: 1, partials: { 1: 15 }, installmentOverrides: { 0: { amount: 80 } } });
   const app = createApp({ storage: { borc_takip_debts: JSON.stringify([old]) } });
   app.context.loadData();
@@ -32,7 +32,7 @@ test('A01/A02: migrate legacy paid installments once, keep overrides, and surviv
   app.context.startPay('debt1', 1, 'full'); app.context.confirmPaySource('salary');
   const paymentId = app.run('payments[0].id');
   const restarted = createApp({ storage: Object.fromEntries(app.storage) }); restarted.context.loadData();
-  restarted.context.undoPayment(paymentId);
+  await restarted.context.undoPayment(paymentId);
   assert.equal(restarted.run('debts[0].paidInstallments'), 1);
   assert.equal(restarted.run('debts[0].partials[0]'), 80);
   assert.equal(restarted.run('debts[0].partials[1]'), 15);
@@ -42,7 +42,7 @@ test('A01/A02: migrate legacy paid installments once, keep overrides, and surviv
   assert.equal(restarted.run('debts[0].partials[0]'), 80, 'Repeated loading must not duplicate old payments');
 });
 
-test('A02: undo one payment while preserving other partial payments and income deductions', () => {
+test('A02: undo one payment while preserving other partial payments and income deductions', async () => {
   const app = createApp(); seed(app, backup([debt({ installmentCount: 4, paidInstallments: 1 })]));
   function pay(index, amount, source) {
     app.context.startPay('debt1', index, 'partial');
@@ -51,7 +51,7 @@ test('A02: undo one payment while preserving other partial payments and income d
     return app.run('payments[0].id');
   }
   const first = pay(1, 30, 'salary'); const second = pay(1, 20, 'salary'); pay(3, 10, 'extra');
-  app.context.undoPayment(first);
+  await app.context.undoPayment(first);
   assert.equal(app.run('debts[0].paidInstallments'), 1);
   assert.equal(app.run('debts[0].partials[1]'), 20); assert.equal(app.run('debts[0].partials[3]'), 10);
   assert.equal(app.run('adjustments.length'), 1); assert.equal(app.run('adjustments[0].amount'), 20);
@@ -141,7 +141,7 @@ test('A06: all mutation entry points are guarded while the first remote download
   const before = records(app);
   form(app); app.document.getElementById('income-name').value = 'Blocked'; app.document.getElementById('income-amount').value = '90';
   app.context.saveDebt({ preventDefault() {} }); app.context.saveIncome({ preventDefault() {} });
-  app.context.deleteDebt('local'); app.context.clearAllData(); app.context.removeSavedName('Existing local record');
+  await app.context.deleteDebt('local'); await app.context.clearAllData(); app.context.removeSavedName('Existing local record');
   app.context.startPay('local', 0, 'full'); app.context.confirmPaySource('salary');
   app.context.persistDebt(debt({ id: 'blocked' }));
   app.context.importData({ target: { value: 'file', files: [{}] } });
@@ -206,7 +206,7 @@ test('A08: failed cloud acknowledgement blocks edits until a successful sync ret
     return response(url.includes('alt=media') ? remote : { files: [{ id: 'file1', version }] });
   }, { baseline: 'file1:1', dirty: true });
   await app.context.syncNow(true); assert.equal(app.run('syncWriteBlocked'), true);
-  app.context.deleteDebt('debt1'); assert.equal(app.run('debts.length'), 1);
+  await app.context.deleteDebt('debt1'); assert.equal(app.run('debts.length'), 1);
   options.failWrites = false; await app.context.syncNow(true);
   assert.equal(app.run('syncWriteBlocked'), false); assert.equal(app.context.getSyncMeta().baseline, 'file1:2');
 });
@@ -237,9 +237,9 @@ test('A07: date edits replace old reminders, payment cancels them, and undo recr
   assert.equal(n.pending.has(20261106), false); assert.equal(n.pending.has(20261107), true);
   app.context.startPay('debt1', 0, 'full'); app.context.confirmPaySource('extra'); await app.context.scheduleDueNotifications();
   assert.equal(n.pending.size, 0);
-  app.context.undoPayment(app.run('payments[0].id')); await app.context.scheduleDueNotifications();
+  await app.context.undoPayment(app.run('payments[0].id')); await app.context.scheduleDueNotifications();
   assert.equal(n.pending.has(20261107), true);
-  app.context.deleteDebt('debt1'); await app.context.scheduleDueNotifications(); assert.equal(n.pending.size, 0);
+  await app.context.deleteDebt('debt1'); await app.context.scheduleDueNotifications(); assert.equal(n.pending.size, 0);
 });
 
 test('A07: elapsed daily reminders do not fire again after reopening; denied permission is respected', async () => {
@@ -266,7 +266,7 @@ test('A08: failed debt/income saves preserve drafts and do not change data or sh
   assert.equal(app.storage.get('borc_takip_state_v5'), raw);
 });
 
-test('A08: payments and undo are atomic across debt, income deduction and payment history', () => {
+test('A08: payments and undo are atomic across debt, income deduction and payment history', async () => {
   const options = {}; const app = createApp(options); seed(app, backup()); app.context.markSyncDirty();
   let before = records(app); let raw = app.storage.get('borc_takip_state_v5'); options.failWrites = true;
   app.context.startPay('debt1', 0, 'full'); app.context.confirmPaySource('salary');
@@ -275,17 +275,17 @@ test('A08: payments and undo are atomic across debt, income deduction and paymen
   options.failWrites = false; app.context.confirmPaySource('salary');
   assert.equal(app.run('payments.length'), 1); assert.equal(app.run('adjustments.length'), 1);
   const payment = app.run('payments[0].id'); before = records(app); raw = app.storage.get('borc_takip_state_v5'); options.failWrites = true;
-  app.context.undoPayment(payment); assert.deepEqual(records(app), before); assert.equal(app.storage.get('borc_takip_state_v5'), raw);
+  await app.context.undoPayment(payment); assert.deepEqual(records(app), before); assert.equal(app.storage.get('borc_takip_state_v5'), raw);
   const restarted = createApp({ storage: Object.fromEntries(app.storage) }); restarted.context.loadData();
   assert.deepEqual(records(restarted), before);
 });
 
-test('A08: failed edits, deletion and data replacement preserve the old snapshot', () => {
+test('A08: failed edits, deletion and data replacement preserve the old snapshot', async () => {
   const options = {}; const app = createApp(options); seed(app, backup()); app.context.markSyncDirty();
   const before = records(app); const raw = app.storage.get('borc_takip_state_v5'); options.failWrites = true;
   app.run("editingDebtId='debt1';pendingDebtSave={debt:{id:'debt1',installmentAmount:200,startDate:'2026-12-20'},installmentIndex:1};");
   app.context.applyDebtEdit('single'); assert.notEqual(app.run('pendingDebtSave'), null);
-  app.context.deleteDebt('debt1'); app.context.clearAllData();
+  await app.context.deleteDebt('debt1'); await app.context.clearAllData();
   assert.equal(app.context.applySyncPayload(backup([])), false);
   assert.deepEqual(records(app), before); assert.equal(app.storage.get('borc_takip_state_v5'), raw);
 });
@@ -296,4 +296,71 @@ test('A09: names matching object properties remain selectable, hideable and rest
   app.context.removeSavedName('__proto__'); assert.equal(app.context.getSavedNames().length, 4);
   app.context.openDebtModal(); form(app, { 'debt-name': '__proto__' }); app.context.saveDebt({ preventDefault() {} });
   assert.equal(app.context.getSavedNames().length, 5);
+});
+
+test('fresh storage starts empty and never requests a Google token without an explicit connection', async () => {
+  const oldPhone = createApp(); seed(oldPhone, backup()); oldPhone.context.markSyncDirty();
+  const freshPhone = createApp(); freshPhone.context.loadData();
+  let tokens = 0;
+  freshPhone.context.window.Capacitor = { Plugins: { GoogleDriveAuth: { getToken() { tokens++; throw new Error('Unrequested account access'); } } } };
+  freshPhone.context.restoreGoogleSession(); await freshPhone.context.syncNow(false);
+  for (const name of ['debts', 'incomes', 'payments', 'adjustments']) assert.equal(freshPhone.run(name + '.length'), 0);
+  assert.equal(tokens, 0); assert.notEqual(freshPhone.context.getSyncMeta().signedIn, true);
+  assert.equal(freshPhone.document.getElementById('modal-sync-welcome').classList.contains('hidden'), false);
+  assert.equal(oldPhone.run('debts.length'), 1);
+});
+
+test('an empty Google account explains where future records go, then saves the first entered record', async () => {
+  const app = createApp(); let remote = null; let uploads = 0;
+  connectDrive(app, async (url, request = {}) => {
+    if (request.method === 'POST') {
+      uploads++; assert.ok(request.body.includes('First entry'));
+      remote = plain(app.context.buildSyncPayload()); return response({ id: 'file1', version: '1' });
+    }
+    return response(url.includes('alt=media') ? remote : { files: remote ? [{ id: 'file1', version: '1' }] : [] });
+  });
+  await app.context.syncNow(true);
+  assert.equal(app.run('debts.length'), 0); assert.equal(uploads, 0);
+  assert.equal(app.context.getSyncMeta().hasBackup, false);
+  assert.ok(app.document.getElementById('google-sync-status').textContent.includes('Yeni kayıtlar'));
+  app.context.openDebtModal(); form(app, { 'debt-name': 'First entry' }); app.context.saveDebt({ preventDefault() {} });
+  await app.context.syncNow(false);
+  assert.equal(uploads, 1); assert.equal(remote.debts[0].name, 'First entry');
+  assert.equal(app.context.getSyncMeta().hasBackup, true);
+});
+
+test('the real custom confirmation cancels safely and handles HTML-like names as text', async () => {
+  const app = createApp({ realConfirm: true });
+  const name = '<img src=x onerror=alert(1)> Sample'; seed(app, backup([debt({ name })]));
+  let deletion = app.context.deleteDebt('debt1');
+  assert.equal(app.run('debts.length'), 1);
+  assert.ok(app.document.getElementById('confirm-message').textContent.includes(name));
+  assert.equal(app.document.getElementById('modal-confirm').classList.contains('hidden'), false);
+  app.context.resolveConfirmation(false); await deletion; assert.equal(app.run('debts.length'), 1);
+  deletion = app.context.deleteDebt('debt1'); app.context.resolveConfirmation(true); await deletion;
+  assert.equal(app.run('debts.length'), 0);
+});
+
+test('a second confirmation cannot replace the first or delete another record', async () => {
+  const app = createApp({ realConfirm: true }); seed(app, backup([debt(), debt({ id: 'second' })]));
+  const first = app.context.deleteDebt('debt1'); await app.context.deleteDebt('second');
+  assert.equal(app.run('debts.length'), 2);
+  app.context.resolveConfirmation(true); await first;
+  assert.deepEqual(plain(app.run('debts')).map(d => d.id), ['second']);
+});
+
+test('a confirmation is rechecked if restore starts while the user is deciding', async () => {
+  const app = createApp({ realConfirm: true }); seed(app, backup());
+  const deletion = app.context.deleteDebt('debt1'); app.run('restoreLocked = true;');
+  app.context.resolveConfirmation(true); await deletion;
+  assert.equal(app.run('debts.length'), 1);
+});
+
+test('an open confirmation follows the chosen language and Escape-style cancellation preserves data', async () => {
+  const app = createApp({ realConfirm: true }); seed(app, backup());
+  const deletion = app.context.deleteDebt('debt1'); app.context.changeAppLanguage('de');
+  assert.equal(app.document.getElementById('confirm-title').textContent, 'Löschen bestätigen');
+  assert.equal(app.document.getElementById('confirm-accept').textContent, 'Löschen');
+  app.context.closeTopModal(); await deletion;
+  assert.equal(app.run('debts.length'), 1); assert.equal(app.run('pendingConfirmation'), null);
 });

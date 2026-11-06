@@ -55,6 +55,10 @@ function createApp(options = {}) {
     Blob, URL, AbortController, Intl, Date: FixedDate, Math, JSON, Object, Array, Number, String, Map, Set
   });
   ['i18n.js', 'app.js'].forEach(file => vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file }));
+  if (!options.realConfirm) context.requestConfirmation = async function(source, values) {
+    confirmations.push(context.BorcI18n.t(source, values));
+    return options.confirm !== false;
+  };
   const run = source => vm.runInContext(source, context);
   return { context, run, elements, storage, document, timers, confirmations, logs };
 }

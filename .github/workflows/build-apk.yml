@@ -61,6 +61,9 @@ jobs:
           grep -E 'compileSdkVersion|targetSdkVersion' android/variables.gradle
           grep 'com.android.tools.build:gradle' android/build.gradle
 
+      - name: Disable Android automatic backup and device transfer
+        run: python3 scripts/configure_android_backup.py
+
       - name: Add Google Drive authentication plugin
         run: |
           JAVA_DIR="android/app/src/main/java/com/borctakip/app"
@@ -101,6 +104,12 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug bundleRelease --no-daemon --stacktrace
+
+      - name: Verify empty-install and Android backup policy in APK
+        run: |
+          APK_TO_CHECK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          test -n "$APK_TO_CHECK"
+          python3 scripts/configure_android_backup.py --verify-apk "$APK_TO_CHECK"
 
       - name: Sign APK with fixed key
         env:

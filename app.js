@@ -132,6 +132,10 @@ function formatDateTR(dateStr) {
   if (Number.isNaN(d.getTime())) return '';
   return new Intl.DateTimeFormat(getLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
 }
+function formatCompactDate(dateStr) {
+  const date = new Date(dateStr + 'T12:00:00');
+  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(getLocale(), { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+}
 function shiftMonth(date, months) {
   const d = new Date(date.getTime());
   const day = d.getDate();
@@ -173,6 +177,36 @@ function showToast(msg, duration) {
   t.classList.add('opacity-100');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(function() { t.classList.remove('opacity-100'); t.classList.add('opacity-0'); }, duration || 2800);
+}
+let pendingConfirmation = null;
+function renderConfirmation() {
+  if (!pendingConfirmation) return;
+  const p = pendingConfirmation;
+  const income = p.options.tone === 'income';
+  document.getElementById('confirm-title').textContent = t(p.options.title || 'Silme onayı');
+  document.getElementById('confirm-message').textContent = t(p.source, p.values);
+  document.getElementById('confirm-cancel').textContent = t('İptal');
+  document.getElementById('confirm-accept').textContent = t(p.options.accept || 'Sil');
+  document.getElementById('confirm-accept').className = 'rounded-xl text-white py-3 px-3 font-semibold ' + (income ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700');
+  document.getElementById('confirm-icon').className = 'w-12 h-12 rounded-2xl flex items-center justify-center text-xl mb-4 ' + (income ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600');
+  document.getElementById('confirm-panel').className = 'absolute left-5 right-5 top-1/2 -translate-y-1/2 max-w-md mx-auto bg-white rounded-3xl p-6 shadow-2xl border ' + (income ? 'border-emerald-100' : 'border-blue-100');
+}
+function requestConfirmation(source, values, options) {
+  if (pendingConfirmation) return Promise.resolve(false);
+  return new Promise(function(resolve) {
+    pendingConfirmation = { source: source, values: values, options: options || {}, resolve: resolve, trigger: document.activeElement };
+    renderConfirmation();
+    document.getElementById('modal-confirm').classList.remove('hidden');
+    document.getElementById('confirm-cancel').focus({ preventScroll: true });
+  });
+}
+function resolveConfirmation(accepted) {
+  if (!pendingConfirmation) return;
+  const p = pendingConfirmation;
+  pendingConfirmation = null;
+  document.getElementById('modal-confirm').classList.add('hidden');
+  if (p.trigger && p.trigger.isConnected && !restoreLocked) p.trigger.focus({ preventScroll: true });
+  p.resolve(accepted === true);
 }
 function escapeHtml(str) {
   if (!str) return '';
@@ -565,11 +599,11 @@ function renderIncomes() {
     const cur = inc.currency || 'TRY';
     const type = inc.type || 'recurring';
     const sub = type === 'once'
-      ? t('Tek seferlik · {date}', { date: formatDateTR(inc.date || (inc.startMonth + '-01')) })
+      ? t('Tek seferlik · {date}', { date: formatCompactDate(inc.date || (inc.startMonth + '-01')) })
       : t('Düzenli · her ay · {currency}', { currency: cur });
     const el = document.createElement('div');
-    el.className = 'bg-white rounded-xl p-3.5 card-shadow flex items-center justify-between fade-in';
-    el.innerHTML = '<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet"></i></div><div><p class="font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><p class="text-xs text-gray-500">' + sub + '</p></div></div><div class="flex items-center gap-2"><span class="font-semibold text-emerald-600">' + formatMoney(inc.amount, cur) + '</span><button onclick="deleteIncome(\'' + inc.id + '\')" class="text-gray-400 hover:text-red-500 p-1.5"><i class="fas fa-trash-alt text-sm"></i></button></div>';
+    el.className = 'income-card bg-white rounded-xl p-3.5 card-shadow fade-in';
+    el.innerHTML = '<div class="income-icon w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center"><i class="fas fa-wallet" aria-hidden="true"></i></div><p class="income-name font-medium text-gray-900">' + escapeHtml(inc.name) + '</p><span class="income-amount font-semibold text-emerald-600">' + formatMoney(inc.amount, cur) + '</span><p class="income-meta text-xs text-gray-500">' + sub + '</p><button type="button" onclick="deleteIncome(\'' + inc.id + '\')" class="income-delete text-gray-400 hover:text-emerald-600" aria-label="' + t('Geliri sil') + '" title="' + t('Sil') + '"><i class="fas fa-trash-alt text-sm" aria-hidden="true"></i></button>';
     list.appendChild(el);
   });
 }
@@ -744,14 +778,17 @@ function recomputePaidInstallments(debt) {
     debt.paidInstallments += 1;
   }
 }
-function undoPayment(paymentId) {
+async function undoPayment(paymentId) {
   if (!canChangeRecords()) return;
-  const payment = payments.find(function(p) { return p.id === paymentId; });
+  let payment = payments.find(function(p) { return p.id === paymentId; });
   if (!payment) return;
-  const original = debts.find(function(d) { return d.id === payment.debtId; });
+  let original = debts.find(function(d) { return d.id === payment.debtId; });
   if (!original) { showToast(t('Borç silindiği için ödeme geri alınamaz')); return; }
+  if (!(await requestConfirmation('{amount} tutarındaki ödeme geri alınsın mı?', { amount: formatMoney(payment.amount, payment.currency) }, { title: 'Ödemeyi geri al', accept: 'Geri al' })) || !canChangeRecords()) return;
+  payment = payments.find(function(p) { return p.id === paymentId; });
+  original = payment && debts.find(function(d) { return d.id === payment.debtId; });
+  if (!payment || !original) return;
   const debt = normalizeDebtPayments(copyRecords(original));
-  if (!confirm(t('{amount} tutarındaki ödeme geri alınsın mı?', { amount: formatMoney(payment.amount, payment.currency) }))) return;
   const idx = payment.installmentIndex || 0;
   const nextPaid = Math.max(0, Math.round(((Number(debt.partials && debt.partials[idx]) || 0) - Number(payment.amount || 0)) * 100) / 100);
   if (!debt.partials) debt.partials = {};
@@ -997,11 +1034,12 @@ function applyDebtEdit(scope) {
   persistDebt(updated, true, change);
 }
 function editDebt(id, installmentIndex) { openDebtModal(id, installmentIndex); }
-function deleteDebt(id) {
+async function deleteDebt(id) {
   if (!canChangeRecords()) return;
   const debt = debts.find(function(d) { return d.id === id; });
   if (!debt) return;
-  if (!confirm(t('“{name}” borcu ve kalan taksitleri silinsin mi? Ödeme arşivi korunur.', { name: debt.name }))) return;
+  if (!(await requestConfirmation('“{name}” borcu ve kalan taksitleri silinsin mi? Ödeme arşivi korunur.', { name: debt.name })) || !canChangeRecords()) return;
+  if (!debts.some(function(d) { return d.id === id; })) return;
   if (!commitData({ debts: debts.filter(function(d) { return d.id !== id; }) })) return;
   showToast(t('Borç silindi'));
   renderAll();
@@ -1074,11 +1112,12 @@ function saveIncome(e) {
   showToast(t(type === 'once' ? 'Tek seferlik gelir eklendi' : 'Düzenli gelir eklendi'));
   renderAll();
 }
-function deleteIncome(id) {
+async function deleteIncome(id) {
   if (!canChangeRecords()) return;
   const income = incomes.find(function(i) { return i.id === id; });
   if (!income) return;
-  if (!confirm(t('“{name}” geliri silinsin mi?', { name: income.name }))) return;
+  if (!(await requestConfirmation('“{name}” geliri silinsin mi?', { name: income.name }, { tone: 'income' })) || !canChangeRecords()) return;
+  if (!incomes.some(function(i) { return i.id === id; })) return;
   if (!commitData({ incomes: incomes.filter(function(i) { return i.id !== id; }) })) return;
   showToast(t('Gelir silindi'));
   renderAll();
@@ -1109,6 +1148,7 @@ function changeAppLanguage(language) {
   // Refresh displayed text, never reset forms, records, selected month or the payment queue.
   document.getElementById('debt-modal-title').textContent = t(editingInstallmentIndex !== null ? 'Taksiti Düzenle' : (editingDebtId ? 'Borcu Düzenle' : 'Yeni Borç Ekle'));
   updateAccessibleActions();
+  renderConfirmation();
   updateSyncUI();
   renderAll();
   renderMonthsNavigator();
@@ -1209,8 +1249,8 @@ function openMonthDebts(monthKey, title) {
   totalEl.textContent = t('Toplam: {total}', { total: formatTotals(byCur) });
   document.getElementById('modal-month-debts').classList.remove('hidden');
 }
-function deleteDebtFromMonth(id, monthKey) {
-  deleteDebt(id);
+async function deleteDebtFromMonth(id, monthKey) {
+  await deleteDebt(id);
   if (!document.getElementById('modal-month-debts').classList.contains('hidden')) {
     openMonthDebts(monthKey, monthTitleFromKey(monthKey));
   }
@@ -1345,13 +1385,14 @@ function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     if (restoreLocked) { showToast(t('Kayıtların yükleniyor…')); return; }
     try {
       const data = validateBackup(JSON.parse(e.target.result));
       if (hasLocalSyncData() || storageReadOnly) {
-        if (!confirm(t('Dosyadaki {debts} borç ve {incomes} gelir kaydı telefondaki mevcut kayıtların yerini alacak. Devam edilsin mi?', { debts: data.debts.length, incomes: data.incomes.length }))) return;
+        if (!(await requestConfirmation('Dosyadaki {debts} borç ve {incomes} gelir kaydı telefondaki mevcut kayıtların yerini alacak. Devam edilsin mi?', { debts: data.debts.length, incomes: data.incomes.length }, { title: 'Verileri İçe Aktar', accept: 'Devam' }))) return;
       }
+      if (restoreLocked || syncWriteBlocked) { canChangeRecords(); return; }
       if (!applySyncPayload(data, { dirty: true, replaceDamaged: true })) return;
       updateSyncUI();
       showToast(t('Veriler yüklendi'));
@@ -1362,10 +1403,11 @@ function importData(event) {
   event.target.value = '';
   closeSettings();
 }
-function clearAllData() {
+async function clearAllData() {
   if (restoreLocked || syncWriteBlocked) { canChangeRecords(); return; }
   if (syncRunning) { showToast(t('Eşitlemenin bitmesini bekle')); return; }
-  if (!confirm(t('Telefondaki kayıtlar silinecek, Drive yedeği korunacak. Otomatik eşitleme duraklatılacak. Devam edilsin mi?'))) return;
+  if (!(await requestConfirmation('Telefondaki kayıtlar silinecek, Drive yedeği korunacak. Otomatik eşitleme duraklatılacak. Devam edilsin mi?'))) return;
+  if (restoreLocked || syncWriteBlocked || syncRunning) { showToast(t('Eşitlemenin bitmesini bekle')); return; }
   if (!applySyncPayload({ debts: [], incomes: [], adjustments: [], payments: [], hiddenNames: [] }, { replaceDamaged: storageReadOnly, syncMeta: { paused: true, dirty: false, baseline: null, lastSync: null } })) return;
   updateSyncUI();
   showToast(t('Telefon kayıtları silindi'));
@@ -1474,6 +1516,7 @@ function updateSyncUI() {
   else if (meta.paused) status.textContent = t('Otomatik eşitleme duraklatıldı');
   else if (meta.error) status.textContent = t('Eşitleme başarısız · Yeniden dene');
   else if (!navigator.onLine || meta.dirty) status.textContent = t('Eşitleme bekliyor');
+  else if (meta.hasBackup === false) status.textContent = t('Google Drive bağlı · Yeni kayıtlar bu hesaba kaydedilecek');
   else if (meta.lastSync) status.textContent = t('Eşitlendi · {date}', { date: new Date(meta.lastSync).toLocaleString(getLocale()) });
   else status.textContent = t('Google Drive bağlı');
 }
@@ -1576,7 +1619,7 @@ async function continueGoogleSignIn() {
     const auth = await plugin.signIn();
     const meta = getSyncMeta();
     if (!auth.email) throw new Error('Google hesabı belirlenemedi');
-    if (!setSyncMeta({ signedIn: true, account: auth.email, paused: false, error: false, baseline: null, lastSync: meta.account === auth.email ? meta.lastSync : null })) return;
+    if (!setSyncMeta({ signedIn: true, account: auth.email, paused: false, error: false, baseline: null, hasBackup: undefined, lastSync: meta.account === auth.email ? meta.lastSync : null })) return;
     connected = true;
   } catch (e) { showToast(t('Google girişi tamamlanamadı')); }
   finally { syncRunning = false; if (!connected) setRestoreLock(false); }
@@ -1636,20 +1679,20 @@ async function syncNow(manual) {
     let baseline = version;
     let restored = false;
     if (remote && !same && (firstConnection || (!meta.dirty && remoteChanged))) {
-      if (!applySyncPayload(remote, { syncMeta: { account: auth.email, baseline: version, dirty: false, error: false, lastSync: new Date().toISOString() } })) throw new Error('Restore could not be saved');
+      if (!applySyncPayload(remote, { syncMeta: { account: auth.email, baseline: version, hasBackup: [remote.debts, remote.incomes, remote.payments, remote.adjustments, remote.hiddenNames].some(function(rows) { return rows && rows.length > 0; }), dirty: false, error: false, lastSync: new Date().toISOString() } })) throw new Error('Restore could not be saved');
       restored = true;
     } else if (!same && (meta.dirty || (!remote && localExists))) {
       baseline = driveVersion(await uploadDrivePayload(token, file?.id, local));
     }
     if (files.length > 1) await deleteDuplicateDriveFiles(token, files, file && file.id);
     const editedWhileUploading = meta.revision !== getSyncMeta().revision;
-    if (!restored && !setSyncMeta({ account: auth.email, baseline: baseline, dirty: editedWhileUploading, error: false, lastSync: new Date().toISOString() })) {
+    if (!restored && !setSyncMeta({ account: auth.email, baseline: baseline, hasBackup: !!baseline && hasLocalSyncData(), dirty: editedWhileUploading, error: false, lastSync: new Date().toISOString() })) {
       syncWriteBlocked = true;
       throw new Error('Sync metadata could not be saved');
     }
     syncWriteBlocked = false;
     syncAgain = syncAgain || editedWhileUploading;
-    if (manual || restored) showToast(t(restored ? 'Drive yedeği geri yüklendi' : 'Google Drive ile eşitlendi'));
+    if (manual || restored) showToast(t(!hasLocalSyncData() ? 'Google Drive bağlı. Yeni kayıtların bu hesaba kaydedilecek.' : (restored ? 'Drive yedeği geri yüklendi' : 'Google Drive ile eşitlendi')));
   } catch (e) {
     console.log('sync', e);
     setSyncMeta({ error: true });
@@ -1668,8 +1711,9 @@ async function deleteDriveBackup() {
   const plugin = googleAuthPlugin();
   if (!meta.signedIn || !plugin || syncRunning || !canChangeRecords()) { showToast(t('Eşitlemenin bitmesini bekle')); return; }
   if (!navigator.onLine) { showToast(t('Drive yedeğini silmek için internete bağlan')); return; }
-  if (!confirm(t('Bağlı Google hesabındaki Borç Takip yedeği kalıcı olarak silinecek. Telefonda bulunan kayıtlar korunacak ve otomatik eşitleme duraklatılacak. Devam edilsin mi?'))) return;
-  if (!setSyncMeta({ paused: true, baseline: null, lastSync: null })) return;
+  if (!(await requestConfirmation('Bağlı Google hesabındaki Borç Takip yedeği kalıcı olarak silinecek. Telefonda bulunan kayıtlar korunacak ve otomatik eşitleme duraklatılacak. Devam edilsin mi?'))) return;
+  if (syncRunning || !canChangeRecords() || !getSyncMeta().signedIn || getSyncMeta().account !== meta.account) return;
+  if (!setSyncMeta({ paused: true, baseline: null, hasBackup: false, lastSync: null })) return;
   syncRunning = true;
   try {
     const auth = await plugin.getToken();
@@ -1733,10 +1777,10 @@ function openNamePicker() {
       del.className = 'w-11 h-11 shrink-0 rounded-xl bg-red-50 text-red-500 hover:bg-red-100';
       del.innerHTML = '<i class="fas fa-times"></i>';
       del.setAttribute('aria-label', t('Kaldır'));
-      del.onclick = function(ev) {
+      del.onclick = async function(ev) {
         ev.preventDefault();
         ev.stopPropagation();
-        if (confirm(t('“{name}” ismini listeden kaldırmak istiyor musunuz?', { name: n }))) {
+        if (await requestConfirmation('“{name}” ismini listeden kaldırmak istiyor musunuz?', { name: n }, { accept: 'Kaldır' })) {
           removeSavedName(n);
         }
       };
@@ -1778,6 +1822,7 @@ function setRestoreLock(locked) {
 function closeTopModal() {
   if (restoreLocked) return true;
   const handlers = [
+    ['modal-confirm', function() { resolveConfirmation(false); }],
     ['modal-drive-permission', closeDrivePermission], ['modal-debt-saved', closeDebtSavedModal],
     ['modal-sync-welcome', dismissSyncWelcome], ['modal-edit-scope', cancelDebtScope],
     ['modal-pay-source', closePaySourceModal], ['modal-name-picker', closeNamePicker],
@@ -1817,7 +1862,15 @@ document.addEventListener('DOMContentLoaded', function() {
   BorcI18n.init();
   initializeModalScrollLock();
   loadData();
-  document.addEventListener('keydown', function(event) { if (event.key === 'Escape' && closeTopModal()) event.preventDefault(); });
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape' && closeTopModal()) event.preventDefault();
+    if (event.key === 'Tab' && pendingConfirmation) {
+      const cancel = document.getElementById('confirm-cancel');
+      const accept = document.getElementById('confirm-accept');
+      if (event.shiftKey && document.activeElement !== accept) { event.preventDefault(); accept.focus(); }
+      else if (!event.shiftKey && document.activeElement !== cancel) { event.preventDefault(); cancel.focus(); }
+    }
+  });
   try { rateCache = JSON.parse(localStorage.getItem('borc_takip_rate_cache')); } catch (e) { rateCache = null; }
   updateRateInfo();
   refreshRates();

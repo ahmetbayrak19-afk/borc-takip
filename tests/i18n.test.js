@@ -40,7 +40,7 @@ for (const [code, locale, month] of [['tr', 'tr-TR', 'Kasım'], ['en', 'en-US', 
     assert.equal(app.context.formatDateTR('2026-11-10'), new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date('2026-11-10T12:00:00')));
     assert.equal(createApp({ storage: Object.fromEntries(app.storage) }).context.BorcI18n.getLanguage(), code);
     seed(app, backup([debt({ name: 'Ayarlar · Straße · Доход · İpek' })]));
-    app.context.deleteDebt('debt1');
+    await app.context.deleteDebt('debt1');
     assert.ok(app.confirmations[0].includes('Ayarlar · Straße · Доход · İpek'));
     assert.ok(!app.confirmations[0].includes('{name}'));
     if (code !== 'tr') assert.ok(!app.confirmations[0].includes('silinsin'));

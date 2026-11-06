@@ -27,8 +27,10 @@ borc-takip.apk telefonda denemek; borc-takip-play.aab Play Console'a yüklemek i
 
 ## 3. Telefonda iki kritik test
 
-- Google geri yükleme: Denemeden önce mevcut kayıtlarınızı dışa aktarın. Örnek borç/gelir ekleyin, Google eşitlemesinin tamamlandığını görün. Uygulamayı kaldırıp yeniden kurun; aynı Google hesabıyla bağlanınca borç, gelir, kısmi ödeme ve arşiv kayıtlarının geri geldiğini doğrulayın.
+- Temiz kurulum ve Google geri yükleme: Denemeden önce mevcut kayıtlarınızı dışa aktarın. Yeni APK'yı güncelleme olarak kurmak mevcut kayıtları korur. Örnek borç/gelir ekleyin, Google eşitlemesinin tamamlandığını görün. Bu yeni sürümü kaldırıp yeniden kurun; Google'a bağlanmadan boş açıldığını, aynı Google hesabıyla bağlanınca borç, gelir, kısmi ödeme ve arşiv kayıtlarının geri geldiğini doğrulayın. Yedeği olmayan bir hesaba bağlanınca yeni kayıtların o hesaba kaydedileceği açıklanmalıdır. Google'a bağlanmadan yalnızca telefonda tutulan kayıtlar kaldırma işleminde silinir; dışa aktarma seçeneğiyle saklanabilir.
 - Bildirim: İzin verin ve yarına vadeli örnek borç ekleyin. Uygulama açık değilken ve ayrıca telefon yeniden başlatıldıktan sonra vade bildirimini kontrol edin. Hedef saat yerel 09.00'dır.
+
+Android sistem yedeği ve cihazdan cihaza otomatik aktarım kapalıdır; uygulama içindeki isteğe bağlı Google Drive eşitlemesi ayrıdır. Derlemede hem kaynak manifest hem üretilen APK'nın boş başlangıç ve yedekleme kuralları kontrol edilir. APK kişisel kayıt dosyalarını içermez.
 
 ## 4. Play Console
 

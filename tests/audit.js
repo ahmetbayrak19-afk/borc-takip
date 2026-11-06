@@ -13,10 +13,10 @@ async function probe(id, name, fn) {
     a.context.applyDebtEdit('all');
     assert.equal(a.run('debts[0].installmentOverrides[0]?.amount ?? debts[0].installmentAmount'), 100, 'Legacy paid first installment became 200 instead of staying 100');
   });
-  await probe('A02', 'Undo must not reopen legacy paid installments', () => {
+  await probe('A02', 'Undo must not reopen legacy paid installments', async () => {
     const a = createApp(); seed(a, backup([debt({ paidInstallments: 1, partials: {} })]));
     a.context.startPay('debt1', 1, 'full'); a.context.confirmPaySource('extra');
-    a.context.undoPayment(a.run('payments[0].id'));
+    await a.context.undoPayment(a.run('payments[0].id'));
     assert.equal(a.run('debts[0].paidInstallments'), 1, 'Undo reset the legacy paid count from 1 to 0 and reopened the first installment');
   });
   await probe('A03', 'An invalid local-storage array must not prevent opening the app', () => {

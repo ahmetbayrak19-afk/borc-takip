@@ -55,7 +55,7 @@ test('rates refresh at most once per 12 hours after success and respect offline 
   await a.context.refreshRates(); assert.equal(calls, 1);
 });
 for (const source of ['salary', 'extra']) {
-  test(`${source}: partial payment, archive and undo preserve balance semantics`, () => {
+  test(`${source}: partial payment, archive and undo preserve balance semantics`, async () => {
     const a = createApp();
     seed(a, { ...backup([debt({ installmentCount: 1, totalAmount: 100 })]), incomes: [{ id: 'i1', name: 'Salary', amount: 1000, type: 'recurring', startMonth: '2026-11', currency: 'TRY' }] });
     const beforeBalance = a.context.getEffectiveIncomeByCurrency('2026-11').TRY - a.context.calcSummaries().thisMonth.TRY;
@@ -66,7 +66,7 @@ for (const source of ['salary', 'extra']) {
     assert.equal(a.run('payments.length'), 1);
     const balance = a.context.getEffectiveIncomeByCurrency('2026-11').TRY - a.context.calcSummaries().thisMonth.TRY;
     assert.equal(balance, beforeBalance + (source === 'extra' ? 30.25 : 0));
-    a.context.undoPayment(a.run('payments[0].id'));
+    await a.context.undoPayment(a.run('payments[0].id'));
     assert.equal(a.context.getActiveInstallments()[0].amount, 100);
     assert.equal(a.run('payments.length'), 0); assert.equal(a.run('adjustments.length'), 0);
   });
@@ -103,11 +103,11 @@ test('all-open-installment edit preserves modern fully paid installments', () =>
   const d = plain(a.run('debts[0]'));
   assert.equal(d.installmentOverrides[0], undefined); assert.equal(d.installmentOverrides[1].amount, 150); assert.equal(d.installmentOverrides[2].amount, 150);
 });
-test('delete cancellation leaves records unchanged; delete retains payment history', () => {
+test('delete cancellation leaves records unchanged; delete retains payment history', async () => {
   const canceled = createApp({ confirm: false }); seed(canceled, backup());
-  canceled.context.deleteDebt('debt1'); assert.equal(canceled.run('debts.length'), 1);
+  await canceled.context.deleteDebt('debt1'); assert.equal(canceled.run('debts.length'), 1);
   const a = createApp(); seed(a, backup()); a.context.startPay('debt1', 0, 'full'); a.context.confirmPaySource('extra');
-  a.context.deleteDebt('debt1'); assert.equal(a.run('debts.length'), 0); assert.equal(a.run('payments.length'), 1);
+  await a.context.deleteDebt('debt1'); assert.equal(a.run('debts.length'), 0); assert.equal(a.run('payments.length'), 1);
 });
 test('backup validator rejects impossible dates, negative amounts, unsupported currency and executable IDs', () => {
   const a = createApp();
@@ -152,9 +152,9 @@ test('a mismatched Google account cannot upload or delete another account’s da
   connectDrive(a, async () => { calls++; return response({}); }, { account: 'other@example.test' });
   await a.context.syncNow(true); assert.equal(calls, 0); assert.equal(a.context.getSyncMeta().error, true);
 });
-test('clearing phone records pauses sync and keeps the language preference', () => {
+test('clearing phone records pauses sync and keeps the language preference', async () => {
   const a = createApp(); seed(a, backup()); a.context.BorcI18n.setLanguage('de');
-  a.context.clearAllData(); assert.equal(a.run('debts.length'), 0); assert.equal(a.context.getSyncMeta().paused, true);
+  await a.context.clearAllData(); assert.equal(a.run('debts.length'), 0); assert.equal(a.context.getSyncMeta().paused, true);
   assert.equal(a.context.BorcI18n.getLanguage(), 'de');
 });
 test('deleting Drive backup deletes all app backup copies and preserves phone records', async () => {

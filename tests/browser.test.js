@@ -35,7 +35,7 @@ async function fresh(code = 'tr', records = [], showWelcome = false) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  page.on('dialog', dialog => dialog.accept());
+  page.on('dialog', dialog => { errors.push('Unexpected native dialog: ' + dialog.type()); dialog.accept(); });
   await page.goto(origin, { waitUntil: 'load' });
   await page.locator('#splash').waitFor({ state: 'hidden' });
   return { page, context, errors };
@@ -115,6 +115,7 @@ async function translated(page, selector, source) {
           await page.click('#btn-settings'); await page.click('button[onclick="openPaymentHistory()"]');
           assert.equal(await page.locator('#payment-history-list > div').count(), 1);
           await page.click('#payment-history-list button');
+          await page.click('#confirm-accept');
           assert.equal(await page.evaluate(() => installmentRemaining(debts[0], 0)), 1200);
           assert.equal(await page.evaluate(() => payments.length), 0);
           await page.reload({ waitUntil: 'load' }); await page.locator('#splash').waitFor({ state: 'hidden' });
@@ -181,7 +182,7 @@ async function translated(page, selector, source) {
         await page.click('#form-income button[type="submit"]'); assert.equal(await page.locator('#income-list > div').count(), 0);
         await page.click('#summary-grid [data-filter="month-1"]'); assert.equal(await page.locator('#income-list > div').count(), 1);
         await page.click('#summary-grid [data-filter="this-month"]');
-        await page.click('#debt-list button[onclick^="deleteDebt("]'); assert.equal(await page.locator('#debt-list > div').count(), 0);
+        await page.click('#debt-list button[onclick^="deleteDebt("]'); await page.click('#confirm-accept'); assert.equal(await page.locator('#debt-list > div').count(), 0);
         assert.deepEqual(errors, []);
       } finally { await context.close(); }
     });
@@ -314,6 +315,98 @@ async function translated(page, selector, source) {
         assert.equal(await page.locator('#storage-warning').isVisible(), true);
         assert.ok((await page.textContent('#income-list')).includes('Healthy income'));
         assert.equal(await page.evaluate(() => localStorage.getItem('borc_takip_debts')), '{broken');
+        assert.deepEqual(errors, []);
+      } finally { await context.close(); }
+    });
+    for (const code of ['tr', 'en', 'de', 'ru']) {
+      for (const [width, height] of [[320, 568], [390, 844], [412, 915], [844, 390]]) {
+        await scenario(`${code}: ${width}x${height} income alignment and themed deletion`, async () => {
+          const { page, context, errors } = await fresh(code, [debt()]);
+          try {
+            await page.setViewportSize({ width, height });
+            await page.evaluate(() => {
+              commitData({ incomes: [
+                { id: 'income_a', name: 'Income A', amount: 12345.67, currency: 'TRY', type: 'recurring', startMonth: '2026-11' },
+                { id: 'income_b', name: 'Income B', amount: 12345.67, currency: 'TRY', type: 'once', date: '2026-11-20', startMonth: '2026-11' },
+                { id: 'income_c', name: 'Income C', amount: 12345.67, currency: 'TRY', type: 'recurring', startMonth: '2026-11' }
+              ] }); renderAll();
+            });
+            const positions = await page.locator('.income-card').evaluateAll(cards => cards.map(card => {
+              const rect = card.getBoundingClientRect(), name = card.querySelector('.income-name').getBoundingClientRect(), amount = card.querySelector('.income-amount').getBoundingClientRect(), remove = card.querySelector('.income-delete').getBoundingClientRect();
+              return { x: amount.x, y: amount.y - rect.y, nameY: name.y - rect.y, removeX: remove.x, amountRight: amount.right, cardRight: rect.right };
+            }));
+            assert.equal(positions.length, 3);
+            for (const p of positions) {
+              assert.ok(Math.abs(p.x - positions[0].x) < 2, 'One-time amount must align with recurring amounts');
+              assert.ok(Math.abs(p.y - positions[0].y) < 2, 'One-time date must not move its amount below the other amounts');
+              assert.ok(Math.abs(p.removeX - positions[0].removeX) < 2);
+              assert.ok(p.amountRight < p.cardRight);
+              if (width > 360) assert.ok(Math.abs(p.y - p.nameY) < 4, 'Amount and name should share the header row');
+            }
+            await noOverflow(page, 'income layout');
+            await page.locator('.income-delete').first().click();
+            await translated(page, '#confirm-title', 'Silme onayı');
+            assert.equal(await page.evaluate(() => incomes.length), 3);
+            const green = await page.locator('#btn-add-income').evaluate(el => getComputedStyle(el).backgroundColor);
+            assert.equal(await page.locator('#confirm-accept').evaluate(el => getComputedStyle(el).backgroundColor), green);
+            assert.equal(await page.locator('#confirm-cancel').evaluate(el => el === document.activeElement), true);
+            await page.keyboard.press('Tab'); assert.equal(await page.locator('#confirm-accept').evaluate(el => el === document.activeElement), true);
+            await page.keyboard.press('Tab'); assert.equal(await page.locator('#confirm-cancel').evaluate(el => el === document.activeElement), true);
+            await page.keyboard.press('Escape'); assert.equal(await page.evaluate(() => incomes.length), 3);
+            if (process.env.TEST_SCREENSHOT_DIR && code === 'en' && width === 390) {
+              await page.locator('.income-card').first().scrollIntoViewIfNeeded();
+              await page.screenshot({ path: path.join(process.env.TEST_SCREENSHOT_DIR, 'income-aligned.png'), animations: 'disabled' });
+            }
+            await page.locator('.income-delete').nth(1).click(); await page.click('#confirm-accept');
+            assert.equal(await page.evaluate(() => incomes.length), 2);
+            await page.click('#debt-list button[onclick^="deleteDebt("]');
+            const blue = await page.locator('#btn-add-debt').evaluate(el => getComputedStyle(el).backgroundColor);
+            assert.equal(await page.locator('#confirm-accept').evaluate(el => getComputedStyle(el).backgroundColor), blue);
+            if (process.env.TEST_SCREENSHOT_DIR && code === 'en' && width === 390) {
+              await page.screenshot({ path: path.join(process.env.TEST_SCREENSHOT_DIR, 'deletion-themed.png'), animations: 'disabled' });
+            }
+            await page.click('#confirm-cancel'); assert.equal(await page.evaluate(() => debts.length), 1);
+            assert.deepEqual(errors, []);
+          } finally { await context.close(); }
+        });
+      }
+    }
+    await scenario('Fresh install offers local-only storage and does not silently connect to Google', async () => {
+      const { page, context, errors } = await fresh('en', [], true);
+      try {
+        await page.locator('#modal-sync-welcome').waitFor({ state: 'visible' });
+        assert.ok((await page.textContent('#modal-sync-welcome')).includes('Uninstalling deletes them'));
+        await translated(page, 'button[onclick="dismissSyncWelcome()"]', 'Bu telefonda kullan');
+        await page.click('button[onclick="dismissSyncWelcome()"]');
+        assert.equal(await page.evaluate(() => debts.length + incomes.length + payments.length), 0);
+        assert.notEqual(await page.evaluate(() => getSyncMeta().signedIn), true);
+        assert.equal(await page.locator('#btn-google-signin').isVisible(), false);
+        await page.click('#btn-settings'); assert.equal(await page.locator('#btn-google-signin').isVisible(), true);
+        assert.deepEqual(errors, []);
+      } finally { await context.close(); }
+    });
+    await scenario('Empty Google storage explains the destination and syncs the first record automatically', async () => {
+      const { page, context, errors } = await fresh('en', [], true);
+      try {
+        await page.evaluate(() => {
+          window.__uploaded = 0;
+          const account = { email: 'qa@example.test', accessToken: 'synthetic-token' };
+          window.Capacitor = { Plugins: { GoogleDriveAuth: { async signIn() { return account; }, async getToken() { return account; } } } };
+          window.fetch = async (url, options = {}) => {
+            if (options.method === 'POST') { window.__uploaded++; return { ok: true, status: 200, async json() { return { id: 'file1', version: '1' }; } }; }
+            return { ok: true, status: 200, async json() { return { files: [] }; } };
+          };
+        });
+        await page.click('button[onclick="acceptSyncWelcome()"]'); await page.click('button[onclick="continueGoogleSignIn()"]');
+        await page.waitForFunction(() => getSyncMeta().hasBackup === false && !restoreLocked);
+        assert.equal(await page.evaluate(() => debts.length + incomes.length + payments.length), 0);
+        assert.equal(await page.evaluate(() => window.__uploaded), 0);
+        await page.click('#btn-settings');
+        assert.ok((await page.textContent('#google-sync-status')).includes('New records will be saved to this account'));
+        await page.click('button[onclick="closeSettings()"]');
+        await page.click('#btn-add-debt'); await page.fill('#debt-name', 'First record'); await page.fill('#debt-total', '90');
+        await page.click('#form-debt button[type="submit"]');
+        await page.waitForFunction(() => window.__uploaded === 1 && getSyncMeta().hasBackup === true);
         assert.deepEqual(errors, []);
       } finally { await context.close(); }
     });
