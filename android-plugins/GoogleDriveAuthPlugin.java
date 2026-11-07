@@ -2,8 +2,12 @@ package com.ahmetbayrak19.borctakip;
 
 import android.accounts.Account;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
-import android.widget.Toast;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.os.Build;
 
 import androidx.activity.result.ActivityResult;
 
@@ -23,6 +27,8 @@ import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.Scope;
 
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -31,11 +37,42 @@ public class GoogleDriveAuthPlugin extends Plugin {
     private static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    @SuppressWarnings("deprecation")
+    private String installedSigningSha1() {
+        try {
+            PackageManager manager = getContext().getPackageManager();
+            PackageInfo info;
+            Signature[] signatures;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info = manager.getPackageInfo(getContext().getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
+                signatures = info.signingInfo == null ? null : info.signingInfo.getApkContentsSigners();
+            } else {
+                info = manager.getPackageInfo(getContext().getPackageName(), PackageManager.GET_SIGNATURES);
+                signatures = info.signatures;
+            }
+            if (signatures == null || signatures.length == 0) return "alınamadı";
+            byte[] digest = MessageDigest.getInstance("SHA-1").digest(signatures[0].toByteArray());
+            StringBuilder value = new StringBuilder();
+            for (byte item : digest) {
+                if (value.length() > 0) value.append(':');
+                value.append(String.format(Locale.US, "%02X", item & 0xFF));
+            }
+            return value.toString();
+        } catch (Exception error) {
+            return "alınamadı (" + error.getClass().getSimpleName() + ")";
+        }
+    }
+
     private void rejectVisible(PluginCall call, String message, Exception error) {
         getActivity().runOnUiThread(() -> {
-            Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
-            if (error == null) call.reject(message);
-            else call.reject(message, error);
+            String diagnostic = message + "\n\nKurulu uygulama SHA-1:\n" + installedSigningSha1();
+            new AlertDialog.Builder(getActivity())
+                .setTitle("Google giriş hatası")
+                .setMessage(diagnostic)
+                .setPositiveButton("Tamam", null)
+                .show();
+            if (error == null) call.reject(diagnostic);
+            else call.reject(diagnostic, error);
         });
     }
 
