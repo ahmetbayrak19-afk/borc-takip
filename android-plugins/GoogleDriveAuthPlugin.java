@@ -3,6 +3,7 @@ package com.ahmetbayrak19.borctakip;
 import android.accounts.Account;
 import android.app.Activity;
 import android.content.Intent;
+import android.widget.Toast;
 
 import androidx.activity.result.ActivityResult;
 
@@ -30,6 +31,14 @@ public class GoogleDriveAuthPlugin extends Plugin {
     private static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    private void rejectVisible(PluginCall call, String message, Exception error) {
+        getActivity().runOnUiThread(() -> {
+            Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+            if (error == null) call.reject(message);
+            else call.reject(message, error);
+        });
+    }
+
     private GoogleSignInClient client() {
         GoogleSignInOptions options = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
@@ -46,15 +55,17 @@ public class GoogleDriveAuthPlugin extends Plugin {
     @ActivityCallback
     private void signInResult(PluginCall call, ActivityResult result) {
         if (call == null) return;
-        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
-            call.reject("Google girişi iptal edildi");
+        if (result.getData() == null) {
+            rejectVisible(call, "Google girişi tamamlanamadı (Android sonuç kodu: " + result.getResultCode() + ")", null);
             return;
         }
         try {
             GoogleSignInAccount account = GoogleSignIn.getSignedInAccountFromIntent(result.getData()).getResult(ApiException.class);
             resolveToken(call, account);
         } catch (ApiException error) {
-            call.reject("Google girişi başarısız: " + error.getStatusCode(), error);
+            String detail = error.getStatusMessage();
+            rejectVisible(call, "Google girişi başarısız (Google kodu: " + error.getStatusCode() +
+                (detail == null || detail.isEmpty() ? "" : ", " + detail) + ")", error);
         }
     }
 
@@ -79,7 +90,10 @@ public class GoogleDriveAuthPlugin extends Plugin {
                 result.put("email", signInAccount.getEmail());
                 getActivity().runOnUiThread(() -> call.resolve(result));
             } catch (IOException | GoogleAuthException error) {
-                getActivity().runOnUiThread(() -> call.reject("Google erişim anahtarı alınamadı", error));
+                String detail = error.getMessage();
+                String message = "Google erişim anahtarı alınamadı (" + error.getClass().getSimpleName() +
+                    (detail == null || detail.isEmpty() ? "" : ": " + detail) + ")";
+                rejectVisible(call, message, error);
             }
         });
     }
