@@ -1,13 +1,7 @@
 package com.ahmetbayrak19.borctakip;
 
 import android.accounts.Account;
-import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Intent;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.Signature;
-import android.os.Build;
 
 import androidx.activity.result.ActivityResult;
 
@@ -27,52 +21,24 @@ import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.Scope;
 
 import java.io.IOException;
-import java.security.MessageDigest;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @CapacitorPlugin(name = "GoogleDriveAuth")
 public class GoogleDriveAuthPlugin extends Plugin {
     private static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+    private static final String AUTH_ERROR_MESSAGE = "Google bağlantısı kurulamadı. Lütfen tekrar deneyin.";
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    @SuppressWarnings("deprecation")
-    private String installedSigningSha1() {
-        try {
-            PackageManager manager = getContext().getPackageManager();
-            PackageInfo info;
-            Signature[] signatures;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info = manager.getPackageInfo(getContext().getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
-                signatures = info.signingInfo == null ? null : info.signingInfo.getApkContentsSigners();
-            } else {
-                info = manager.getPackageInfo(getContext().getPackageName(), PackageManager.GET_SIGNATURES);
-                signatures = info.signatures;
-            }
-            if (signatures == null || signatures.length == 0) return "alınamadı";
-            byte[] digest = MessageDigest.getInstance("SHA-1").digest(signatures[0].toByteArray());
-            StringBuilder value = new StringBuilder();
-            for (byte item : digest) {
-                if (value.length() > 0) value.append(':');
-                value.append(String.format(Locale.US, "%02X", item & 0xFF));
-            }
-            return value.toString();
-        } catch (Exception error) {
-            return "alınamadı (" + error.getClass().getSimpleName() + ")";
-        }
-    }
-
-    private void rejectVisible(PluginCall call, String message, Exception error) {
+    private void rejectVisible(PluginCall call, Exception error) {
         getActivity().runOnUiThread(() -> {
-            String diagnostic = message + "\n\nKurulu uygulama SHA-1:\n" + installedSigningSha1();
             new AlertDialog.Builder(getActivity())
                 .setTitle("Google giriş hatası")
-                .setMessage(diagnostic)
+                .setMessage(AUTH_ERROR_MESSAGE)
                 .setPositiveButton("Tamam", null)
                 .show();
-            if (error == null) call.reject(diagnostic);
-            else call.reject(diagnostic, error);
+            if (error == null) call.reject(AUTH_ERROR_MESSAGE);
+            else call.reject(AUTH_ERROR_MESSAGE, error);
         });
     }
 
@@ -93,16 +59,14 @@ public class GoogleDriveAuthPlugin extends Plugin {
     private void signInResult(PluginCall call, ActivityResult result) {
         if (call == null) return;
         if (result.getData() == null) {
-            rejectVisible(call, "Google girişi tamamlanamadı (Android sonuç kodu: " + result.getResultCode() + ")", null);
+            rejectVisible(call, null);
             return;
         }
         try {
             GoogleSignInAccount account = GoogleSignIn.getSignedInAccountFromIntent(result.getData()).getResult(ApiException.class);
             resolveToken(call, account);
         } catch (ApiException error) {
-            String detail = error.getStatusMessage();
-            rejectVisible(call, "Google girişi başarısız (Google kodu: " + error.getStatusCode() +
-                (detail == null || detail.isEmpty() ? "" : ", " + detail) + ")", error);
+            rejectVisible(call, error);
         }
     }
 
@@ -127,10 +91,7 @@ public class GoogleDriveAuthPlugin extends Plugin {
                 result.put("email", signInAccount.getEmail());
                 getActivity().runOnUiThread(() -> call.resolve(result));
             } catch (IOException | GoogleAuthException error) {
-                String detail = error.getMessage();
-                String message = "Google erişim anahtarı alınamadı (" + error.getClass().getSimpleName() +
-                    (detail == null || detail.isEmpty() ? "" : ": " + detail) + ")";
-                rejectVisible(call, message, error);
+                rejectVisible(call, error);
             }
         });
     }
